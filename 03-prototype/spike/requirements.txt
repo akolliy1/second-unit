@@ -1,0 +1,13 @@
+# Day-1 spike. Pinned where a wrong version silently breaks the build.
+google-adk[mcp]>=2.6.0
+google-cloud-aiplatform[agent_engines,adk]>=1.101.0
+
+# HARD CEILING. google-adk 2.7.x requires mcp>=1.24,<2, but declares it only under an
+# EXTRA -- so a bare `mcp>=1.9` resolves to 2.x, pip reports no conflict, and ADK dies at
+# import with "No module named 'mcp.shared.session'". Found 2026-08-25. Do not relax.
+mcp>=1.24,<2
+
+python-dotenv>=1.0.0
+
+# fallback track only, uncomment if you pivot:
+# mcp-clickhouse>=0.1.0

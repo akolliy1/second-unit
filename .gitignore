@@ -1,0 +1,26 @@
+# Secrets — SETUP-NOW.md holds live Grafana tokens and the GCP project id.
+# It is a local worksheet, NOT part of the deliverable. Never commit it.
+SETUP-NOW.md
+.env
+*.env
+!.env.example
+
+# Unrelated interview prep that landed in this folder by accident
+js-learning/
+
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
+
+# --- Private working notes, not part of the deliverable ---
+# The public repo should contain the project, not the campaign around it: competitive
+# analysis, submission drafts and day-by-day planning are ours, and reading like a
+# strategy memo does the engineering no favours.
+00-intel/
+01-research/
+04-submission/
+# The engineering docs are published from docs/ instead, so the whole working
+# directory stays private and there is one canonical copy of each.
+02-planning/
+README-internal.md

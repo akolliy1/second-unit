@@ -1,0 +1,996 @@
+<!doctype html>
+<!--
+  Second Unit — one page, no build step.
+
+  Everything is inlined: the deploy target has no guaranteed network egress, and a blocked
+  CDN would hand a judge an unstyled page. That is a disqualifying-gate risk, so there are
+  zero external requests on this page. No fonts, no scripts, no stylesheets.
+
+  Two attributes drive the whole UI:
+    <html data-persona="td|supervisor|producer">  -> which framing of the finding is shown
+    .zone[data-state="empty|loading|ready|error"] -> which state each panel renders
+
+  Every zone has all four states in the markup and CSS switches between them, so an error
+  is a designed state rather than a blank div.
+-->
+<html lang="en" data-persona="td">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Second Unit — SH042 lighting slip</title>
+<meta name="description" content="An agentic second unit for the render farm: it watches, diagnoses, forecasts the production impact, and asks before it writes.">
+<style>
+/* ---------------------------------------------------------------- studio console */
+:root{
+  --bg:#080a0d; --bg2:#0d1116; --panel:#11161d; --panel2:#161c25;
+  --line:#212a36; --line2:#2c3745;
+  --ink:#e8eef6; --ink2:#a8b6c6; --ink3:#6f7d8d;
+  --amber:#f5a623; --amber-dim:#8a5f14;
+  --crit:#ff5f56; --crit-dim:#4a1d1a;
+  --ok:#3fb950; --ok-dim:#173a1d;
+  --cyan:#5ecbe8; --violet:#a78bfa;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --r:10px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;overflow-x:hidden}
+body{
+  background:
+    radial-gradient(1200px 600px at 50% -10%, #131a24 0%, transparent 60%),
+    var(--bg);
+  color:var(--ink); font-family:var(--sans);
+  font-size:16px; line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+  padding:0 0 4rem;
+}
+a{color:var(--cyan)}
+.wrap{max-width:940px;margin:0 auto;padding:0 clamp(.75rem,3vw,1.5rem)}
+
+/* ---------------------------------------------------------------- top bar */
+.topbar{
+  position:sticky; top:0; z-index:20;
+  background:rgba(8,10,13,.92); backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--line);
+}
+.topbar-in{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;padding-top:.7rem;padding-bottom:.7rem}
+.brand{font-family:var(--mono);font-size:.9rem;letter-spacing:.22em;font-weight:600;white-space:nowrap}
+.brand b{color:var(--amber);font-weight:600}
+.brand small{display:block;letter-spacing:.06em;font-size:.62rem;color:var(--ink3);margin-top:2px}
+.spacer{flex:1 1 auto}
+
+/* persona toggle: a segmented control, not a nav */
+.personas{display:flex;gap:2px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:3px}
+.personas button{
+  appearance:none;background:transparent;border:0;color:var(--ink2);
+  font:inherit;font-size:.78rem;padding:.34rem .7rem;border-radius:999px;cursor:pointer;
+  white-space:nowrap;
+}
+.personas button:hover{color:var(--ink)}
+.personas button[aria-selected="true"]{background:var(--amber);color:#1a1205;font-weight:600}
+.personas button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+
+.freshness{display:flex;align-items:center;gap:.4rem;font-family:var(--mono);font-size:.7rem;color:var(--ink2);white-space:nowrap}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ink3);flex:none}
+.dot.live{background:var(--ok);box-shadow:0 0 0 0 rgba(63,185,80,.7);animation:pulse 2s infinite}
+.dot.busy{background:var(--amber);animation:pulse 1s infinite}
+.dot.bad{background:var(--crit)}
+@keyframes pulse{70%{box-shadow:0 0 0 7px rgba(63,185,80,0)}100%{box-shadow:0 0 0 0 rgba(63,185,80,0)}}
+@media (prefers-reduced-motion:reduce){.dot{animation:none!important}}
+
+/* ---------------------------------------------------------------- zones */
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);margin:1rem 0}
+.panel-head{
+  display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap;
+  padding:.7rem 1rem;border-bottom:1px solid var(--line);
+}
+.panel-head h2{
+  margin:0;font-family:var(--mono);font-size:.72rem;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--ink2);font-weight:600;
+}
+.panel-head .note{font-size:.72rem;color:var(--ink3);font-family:var(--mono)}
+.panel-body{padding:1rem}
+
+/* the four-state switch. every zone ships all four; CSS picks one. */
+.zone > .st{display:none}
+.zone[data-state="empty"]   > .st-empty,
+.zone[data-state="loading"] > .st-loading,
+.zone[data-state="ready"]   > .st-ready,
+.zone[data-state="error"]   > .st-error{display:block}
+
+.st-empty{color:var(--ink3);font-size:.9rem}
+/* direct child only: the empty-state heading is a block, but an inline <strong> inside
+   its body copy must stay inline. */
+.st-empty > strong{color:var(--ink2);display:block;font-weight:600;margin-bottom:.2rem}
+/* .st-* are state switches only. .errcard is the visual. Keeping them separate stops a
+   card nested inside its own state wrapper from drawing the border twice. */
+.errcard{
+  border:1px solid var(--crit);border-left-width:3px;background:rgba(255,95,86,.06);
+  border-radius:8px;padding:.8rem .9rem;
+}
+.errcard .etitle{color:var(--crit);font-weight:600;font-size:.9rem;display:flex;gap:.4rem;align-items:center}
+.errcard .emsg{font-family:var(--mono);font-size:.76rem;color:var(--ink2);margin:.45rem 0;word-break:break-word}
+.errcard .ehint{font-size:.82rem;color:var(--ink3)}
+
+/* skeletons */
+.sk{background:linear-gradient(90deg,var(--panel2) 25%,#1d2530 50%,var(--panel2) 75%);
+    background-size:400% 100%;animation:sh 1.4s ease-in-out infinite;border-radius:6px;height:1rem;margin:.5rem 0}
+@keyframes sh{0%{background-position:100% 0}100%{background-position:0 0}}
+@media (prefers-reduced-motion:reduce){.sk{animation:none}}
+.sk.h1{height:2.4rem;width:88%}.sk.h2{height:1.1rem;width:62%}.sk.h3{height:.8rem;width:40%}
+
+/* ---------------------------------------------------------------- verdict */
+.verdict{
+  margin-top:1.1rem;border:1px solid var(--line2);border-radius:var(--r);
+  background:linear-gradient(180deg,#181008 0%,var(--panel) 55%);
+  border-top:3px solid var(--amber);
+  padding:1.1rem clamp(.9rem,3vw,1.5rem) 1.2rem;
+}
+.verdict[data-severity="none"]{border-top-color:var(--line2);background:var(--panel)}
+.verdict[data-severity="critical"]{border-top-color:var(--crit);background:linear-gradient(180deg,#1b0d0c 0%,var(--panel) 55%)}
+.vtag{
+  display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;
+  font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--crit);font-weight:600;
+}
+.vtag .sep{color:var(--ink3)}
+.vtag .stamp{color:var(--ink3);letter-spacing:.06em;font-weight:400;text-transform:none}
+/* THE line. Largest type on the page, by a clear margin. */
+.vhead{
+  font-size:clamp(1.45rem,5.4vw,2.6rem); line-height:1.14; font-weight:700;
+  letter-spacing:-.02em; margin:.5rem 0 .1rem; color:#fff; text-wrap:balance;
+}
+.vsub{font-size:clamp(.95rem,2.4vw,1.1rem);color:var(--ink2);margin:.45rem 0 0;max-width:62ch}
+.vmetrics{display:flex;flex-wrap:wrap;gap:.5rem;margin:.95rem 0 0;padding:0;list-style:none}
+.vmetrics li{
+  background:#0c1015;border:1px solid var(--line);border-radius:8px;padding:.4rem .6rem;
+  font-family:var(--mono);font-size:.78rem;
+}
+.vmetrics .k{display:block;color:var(--ink3);font-size:.62rem;letter-spacing:.12em;text-transform:uppercase}
+.vmetrics .v{color:var(--ink);font-weight:600}
+.vmetrics .was{color:var(--ink3)}
+.vnext{display:grid;grid-template-columns:minmax(0,1fr);gap:.5rem;margin-top:1rem}
+@media(min-width:640px){.vnext{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+.vnext div{background:#0c1015;border:1px solid var(--line);border-left:2px solid var(--ok);border-radius:8px;padding:.55rem .7rem}
+.vnext div.risk{border-left-color:var(--amber)}
+.vnext .k{font-family:var(--mono);font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3);display:block;margin-bottom:.2rem}
+.vnext .t{display:block;font-size:.86rem;color:var(--ink2)}
+
+/* per-persona: exactly one framing visible, and it works before JS runs */
+.frame{display:none}
+html[data-persona="td"] .frame[data-persona="td"],
+html[data-persona="supervisor"] .frame[data-persona="supervisor"],
+html[data-persona="producer"] .frame[data-persona="producer"]{display:block}
+
+/* ---------------------------------------------------------------- stages */
+.stages{list-style:none;margin:0;padding:0}
+.stage{border-bottom:1px solid var(--line)}
+.stage:last-child{border-bottom:0}
+.stage-head{
+  width:100%;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;
+  background:transparent;border:0;color:inherit;font:inherit;text-align:left;
+  padding:.7rem 1rem;cursor:pointer;
+}
+.stage-head:hover{background:var(--panel2)}
+.stage-head:focus-visible{outline:2px solid var(--cyan);outline-offset:-2px}
+.caret{font-family:var(--mono);color:var(--ink3);width:.9em;flex:none;transition:transform .12s}
+.stage[data-open="1"] .caret{transform:rotate(90deg)}
+.stage-name{font-weight:600;font-size:.95rem}
+.stage-role{color:var(--ink3);font-size:.78rem}
+.stage-meta{margin-left:auto;font-family:var(--mono);font-size:.72rem;color:var(--ink2);white-space:nowrap}
+.stage-pill{font-family:var(--mono);font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;
+  border:1px solid var(--line2);border-radius:999px;padding:.1rem .45rem;color:var(--ink3);flex:none}
+.stage[data-state="running"] .stage-pill{border-color:var(--amber-dim);color:var(--amber)}
+.stage[data-state="done"]    .stage-pill{border-color:var(--ok-dim);color:var(--ok)}
+.stage[data-state="failed"]  .stage-pill{border-color:var(--crit);color:var(--crit)}
+.stage-body{display:none;padding:0 1rem 1rem;border-top:1px solid var(--line)}
+.stage[data-open="1"] .stage-body{display:block}
+
+.kv{margin:.8rem 0 0}
+.kv .k{font-family:var(--mono);font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3);margin-bottom:.25rem}
+.kv .v{font-size:.9rem;color:var(--ink)}
+.chain{list-style:none;margin:.3rem 0 0;padding:0;counter-reset:c}
+.chain li{position:relative;padding:.3rem 0 .3rem 2rem;font-size:.88rem;color:var(--ink2);counter-increment:c}
+.chain li::before{
+  content:counter(c);position:absolute;left:0;top:.35rem;width:1.35rem;height:1.35rem;
+  border:1px solid var(--line2);border-radius:50%;color:var(--ink3);
+  font-family:var(--mono);font-size:.68rem;display:grid;place-items:center;
+}
+.chain li:not(:last-child)::after{content:"";position:absolute;left:.67rem;top:1.8rem;bottom:-.2rem;width:1px;background:var(--line2)}
+
+.hyp{list-style:none;margin:.3rem 0 0;padding:0;display:grid;grid-template-columns:minmax(0,1fr);gap:.45rem}
+.hyp li{border:1px solid var(--line);border-left:3px solid var(--ink3);border-radius:8px;padding:.5rem .65rem;background:#0c1015}
+.hyp li[data-verdict="confirmed"]{border-left-color:var(--ok)}
+.hyp li[data-verdict="ruled_out"]{border-left-color:var(--crit);opacity:.92}
+.hyp .top{display:flex;gap:.5rem;align-items:baseline;flex-wrap:wrap}
+.hyp .mark{font-family:var(--mono);flex:none}
+.hyp li[data-verdict="confirmed"] .mark{color:var(--ok)}
+.hyp li[data-verdict="ruled_out"] .mark{color:var(--crit)}
+.hyp .stmt{font-size:.88rem;font-weight:600}
+.hyp li[data-verdict="ruled_out"] .stmt{font-weight:500;text-decoration:line-through;text-decoration-color:var(--crit-dim)}
+.hyp .badge{font-family:var(--mono);font-size:.58rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);border:1px solid var(--line2);border-radius:999px;padding:.05rem .4rem}
+.hyp .why{font-size:.82rem;color:var(--ink3);margin-top:.3rem}
+
+.sigs{list-style:none;margin:.3rem 0 0;padding:0;display:grid;grid-template-columns:minmax(0,1fr);gap:.35rem}
+.sigs li{font-family:var(--mono);font-size:.72rem;color:var(--ink2);background:#0a0d11;border:1px solid var(--line);
+  border-radius:6px;padding:.4rem .5rem;overflow-x:auto;white-space:pre;-webkit-overflow-scrolling:touch}
+.tags{display:flex;flex-wrap:wrap;gap:.35rem;margin:.3rem 0 0;padding:0;list-style:none}
+.tags li{font-family:var(--mono);font-size:.72rem;border:1px solid var(--line2);border-radius:999px;padding:.12rem .5rem;color:var(--ink2)}
+.tags li.hot{border-color:var(--crit);color:var(--crit)}
+
+.calls{list-style:none;margin:.3rem 0 0;padding:0;display:grid;grid-template-columns:minmax(0,1fr);gap:.2rem}
+.calls li{display:flex;gap:.5rem;align-items:baseline;min-width:0;font-family:var(--mono);font-size:.72rem;color:var(--ink3)}
+.calls .n{color:var(--violet);flex:none}
+.calls .a{color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto;min-width:0}
+.calls .ms{color:var(--ink3);flex:none}
+.calls li.pending .n{color:var(--amber)}
+
+/* ---------------------------------------------------------------- evidence */
+.ev{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:minmax(0,1fr);gap:.6rem}
+.ev li{border:1px solid var(--line);border-radius:8px;background:#0c1015;padding:.6rem .7rem;min-width:0}
+.ev .claim{font-size:.88rem;color:var(--ink);margin-bottom:.4rem}
+.ev .q{display:flex;gap:.45rem;align-items:baseline;min-width:0;font-family:var(--mono);font-size:.72rem}
+.ev .tool{color:var(--violet);flex:none}
+.ev .query{color:var(--cyan);overflow-x:auto;white-space:pre;flex:1 1 auto;min-width:0;padding-bottom:.15rem}
+.ev .obs{font-family:var(--mono);font-size:.72rem;color:var(--ink2);margin-top:.35rem;overflow-wrap:anywhere}
+.ev .obs::before{content:"→ ";color:var(--ink3)}
+.ev .src{font-family:var(--mono);font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);margin-bottom:.3rem}
+.deeplink{
+  display:inline-block;margin-top:.45rem;font-family:var(--mono);font-size:.7rem;
+  color:var(--cyan);text-decoration:none;border:1px solid var(--line2);border-radius:6px;padding:.2rem .5rem;
+}
+.deeplink:hover{border-color:var(--cyan)}
+.deeplink[aria-disabled="true"]{color:var(--ink3);border-color:var(--line);cursor:not-allowed}
+
+/* ---------------------------------------------------------------- write-back */
+.wb{border-color:var(--amber-dim)}
+.wb .panel-head{background:rgba(245,166,35,.06)}
+.wb .panel-head h2{color:var(--amber)}
+.wbitems{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:minmax(0,1fr);gap:.5rem}
+.wbitems li{border:1px solid var(--line);border-radius:8px;background:#0c1015;padding:.6rem .7rem}
+.wbitems label{display:flex;gap:.6rem;align-items:flex-start;min-width:0;cursor:pointer}
+.wbitems input{margin:.25rem 0 0;accent-color:var(--amber);width:1.05rem;height:1.05rem;flex:none}
+.wbitems .t{display:block;font-size:.9rem;font-weight:600}
+.wbitems .d{display:block;font-size:.8rem;color:var(--ink3);margin-top:.15rem;overflow-wrap:anywhere}
+.wbitems .m{display:block;font-family:var(--mono);font-size:.64rem;color:var(--ink3);margin-top:.3rem}
+.wbitems li[data-done="1"]{border-color:var(--ok-dim);background:rgba(63,185,80,.05)}
+.wbitems li[data-done="1"] .t::after{content:" ✓ queued";color:var(--ok);font-family:var(--mono);font-size:.66rem;font-weight:400}
+.wbfoot{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-top:.9rem}
+.wbnote{font-size:.78rem;color:var(--ink3);flex:1 1 12rem;min-width:0}
+.approved{border:1px solid var(--ok);border-left-width:3px;background:rgba(63,185,80,.07);border-radius:8px;padding:.7rem .8rem;margin-top:.9rem}
+.approved .t{color:var(--ok);font-weight:600;font-size:.9rem}
+.approved .d{font-size:.82rem;color:var(--ink2);margin-top:.25rem}
+
+/* ---------------------------------------------------------------- buttons */
+.btn{
+  appearance:none;font:inherit;font-size:.86rem;font-weight:600;cursor:pointer;
+  border-radius:8px;padding:.6rem 1rem;border:1px solid var(--line2);
+  background:var(--panel2);color:var(--ink);
+}
+.btn:hover:not(:disabled){border-color:var(--ink3)}
+.btn:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--amber);border-color:var(--amber);color:#1a1205}
+.btn.primary:hover:not(:disabled){background:#ffb733}
+.btn.go{background:var(--ok);border-color:var(--ok);color:#04170a}
+.btn.go:hover:not(:disabled){background:#4ed163}
+.actions{display:flex;gap:.6rem;flex-wrap:wrap;margin:1.2rem 0 0;align-items:center}
+.actions .hint{font-size:.74rem;color:var(--ink3);flex:1 1 10rem}
+.spin{display:inline-block;width:.8em;height:.8em;border:2px solid currentColor;border-right-color:transparent;
+  border-radius:50%;animation:sp .7s linear infinite;vertical-align:-.1em;margin-right:.45em}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
+  font-family:var(--mono);font-size:.68rem;color:var(--ink3);line-height:1.7}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+@media (max-width:520px){
+  .topbar-in{gap:.5rem}
+  .brand{font-size:.8rem}
+  .personas{order:3;width:100%;justify-content:space-between}
+  .personas button{flex:1 1 0;text-align:center;padding:.4rem .3rem}
+  .stage-meta{margin-left:0;width:100%}
+}
+
+/* persona: a producer does not want PromQL. same evidence, less machinery. */
+.ev .qcount{display:none;font-family:var(--mono);font-size:.7rem;color:var(--ink3)}
+.hide-queries .ev .q,.hide-queries .ev .obs,.hide-queries .ev .deeplink{display:none}
+.hide-queries .ev .qcount{display:block}
+</style>
+</head>
+<body>
+<a class="sr" href="#verdict">Skip to the verdict</a>
+
+<header class="topbar"><div class="wrap topbar-in">
+  <div class="brand">SECOND <b>UNIT</b><small>render farm · second unit</small></div>
+  <div class="spacer"></div>
+  <!-- The persona toggle is the whole thesis in one control: one investigation, three
+       framings. It is read-only and client-side — explicitly NOT an auth boundary. -->
+  <div class="personas" role="tablist" aria-label="Frame the finding for">
+    <button type="button" role="tab" data-persona="td" aria-selected="true">TD</button>
+    <button type="button" role="tab" data-persona="supervisor" aria-selected="false">Supervisor</button>
+    <button type="button" role="tab" data-persona="producer" aria-selected="false">Producer</button>
+  </div>
+  <div class="freshness"><span class="dot live" id="dot"></span><span id="statusText">recorded run</span></div>
+</div></header>
+
+<main class="wrap">
+
+  <!-- ============================================================ 1. VERDICT -->
+  <section class="zone" id="verdictZone" data-state="ready" aria-live="polite">
+    <div class="st st-ready">
+      <div class="verdict" id="verdict" data-severity="{{ verdict.severity if verdict else 'critical' }}">
+        <div class="vtag">
+          <span id="vSeverity">⚠ {{ verdict.severity|upper if verdict else 'CRITICAL' }}</span>
+          <span class="sep">·</span>
+          <span id="vSubject">{{ verdict.subject if verdict else '' }}</span>
+          <span class="sep">·</span>
+          <span class="stamp" id="vStamp">recorded {{ scenario.recorded_at }}</span>
+        </div>
+        {% for pid in ['td','supervisor','producer'] %}
+        <div class="frame" data-persona="{{ pid }}">
+          <h1 class="vhead" data-f="headline">{{ verdict.personas[pid].headline if verdict else 'No finding yet' }}</h1>
+          <p class="vsub" data-f="sub">{{ verdict.personas[pid].sub if verdict else '' }}</p>
+          <div class="vnext">
+            <div><span class="k">Recommended action</span><span class="t" data-f="action">{{ verdict.personas[pid].action if verdict else '' }}</span></div>
+            <div class="risk"><span class="k">Trade-off</span><span class="t" data-f="risk">{{ verdict.personas[pid].risk if verdict else '' }}</span></div>
+          </div>
+        </div>
+        {% endfor %}
+        <ul class="vmetrics" id="vMetrics">
+          {% for m in (verdict.metrics if verdict else []) %}
+          <li><span class="k">{{ m.label }}</span><span class="v">{{ m.value }}{% if m.was %} <span class="was">(was {{ m.was }})</span>{% endif %}</span></li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    <div class="st st-loading">
+      <div class="verdict"><div class="vtag"><span>investigating…</span></div>
+        <div class="sk h1"></div><div class="sk h2"></div><div class="sk h3"></div>
+      </div>
+    </div>
+    <div class="st st-empty">
+      <div class="verdict" data-severity="none">
+        <div class="vtag" style="color:var(--ink3)"><span>◦ NO ACTIVE FINDING</span></div>
+        <h1 class="vhead" style="color:var(--ink2)">Nothing has been investigated yet</h1>
+        <p class="vsub">Press <strong>Run investigation</strong> and the pipeline triages the farm,
+           diagnoses the cause, forecasts the production impact, and proposes what to write back.</p>
+      </div>
+    </div>
+    <div class="st st-error">
+      <div class="verdict" data-severity="none">
+        <div class="errcard">
+          <div class="etitle">✗ The investigation did not reach a verdict</div>
+          <div class="emsg" id="vErrMsg">—</div>
+          <div class="ehint">No verdict is shown because no stage produced one. Nothing was written to Grafana.
+            The stage stream below shows how far the pipeline got.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ 2. STAGES -->
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Pipeline</h2>
+      <span class="note" id="stagesNote">3 stages · deterministic order</span>
+    </div>
+    <div class="zone" id="stagesZone" data-state="ready">
+      <div class="st st-ready">
+        <div class="errcard" id="stagesErr" style="margin:1rem" hidden>
+          <div class="etitle">✗ Pipeline halted</div>
+          <div class="emsg" id="stagesErrMsg">—</div>
+          <div class="ehint">A stage whose output fails schema validation is a failed stage, not prose to
+            reinterpret — so nothing downstream of it ran.</div>
+        </div>
+        <ol class="stages" id="stages"></ol>
+      </div>
+      <div class="st st-loading" style="padding:1rem"><div class="sk h2"></div><div class="sk h3"></div><div class="sk h2"></div></div>
+      <div class="st st-empty" style="padding:1rem">
+        <strong>No run yet</strong>
+        Watchtower → Diagnostician → Impact Forecaster. Stage order and every handoff are
+        fixed in Python; the model only decides what goes in the fields.
+      </div>
+      <div class="st st-error" style="padding:1rem">
+        <div class="errcard">
+          <div class="etitle">✗ The pipeline did not start</div>
+          <div class="emsg" id="stagesErrMsg2">—</div>
+          <div class="ehint">No stage ran, so there is nothing to show. This is a transport or
+            server-side failure, not a failed diagnosis.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ 3. EVIDENCE -->
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Evidence</h2>
+      <span class="note" id="evNote">every claim carries the query that produced it</span>
+      <div class="spacer"></div>
+      <button class="btn" id="btnEvToggle" type="button" style="padding:.25rem .6rem;font-size:.72rem">Hide queries</button>
+    </div>
+    <div class="zone" id="evZone" data-state="ready">
+      <div class="st st-ready"><div class="panel-body"><ul class="ev" id="evList"></ul></div></div>
+      <div class="st st-loading"><div class="panel-body"><div class="sk h2"></div><div class="sk h3"></div><div class="sk h2"></div></div></div>
+      <div class="st st-empty"><div class="panel-body st-empty">
+        <strong>No evidence yet</strong>
+        Each PromQL and LogQL query the agent actually sent will appear here, with what came
+        back and a deeplink into the live stack.
+      </div></div>
+      <div class="st st-error"><div class="panel-body">
+        <div class="errcard">
+          <div class="etitle">✗ Evidence unavailable</div>
+          <div class="emsg" id="evErrMsg">—</div>
+          <div class="ehint">Claims without citeable evidence are not shown at all. That is deliberate.</div>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- ============================================================ 4. WRITE-BACK -->
+  <section class="panel wb">
+    <div class="panel-head">
+      <h2>Proposed write-back</h2>
+      <span class="note">requires human approval · nothing runs until it is given</span>
+    </div>
+    <div class="zone" id="wbZone" data-state="ready">
+      <div class="st st-ready"><div class="panel-body">
+        <ul class="wbitems" id="wbList"></ul>
+        <div class="wbfoot">
+          <button class="btn go" id="btnApprove" type="button">Approve and write</button>
+          <span class="wbnote" id="wbNote">The service-account token carries the real authority
+            (<code>annotations:write</code>, <code>dashboards:write</code>, <code>alert.rules:write</code>).
+            This gate is the only thing between the agent and using it.</span>
+        </div>
+        <div id="wbResult" hidden></div>
+      </div></div>
+      <div class="st st-loading"><div class="panel-body"><div class="sk h2"></div><div class="sk h2"></div><div class="sk h3"></div></div></div>
+      <div class="st st-empty"><div class="panel-body st-empty">
+        <strong>Nothing proposed</strong>
+        The agent proposes writes only once it has a diagnosis it can cite. Run an investigation first.
+      </div></div>
+      <div class="st st-error"><div class="panel-body">
+        <div class="errcard">
+          <div class="etitle">✗ Approval failed</div>
+          <div class="emsg" id="wbErrMsg">—</div>
+          <div class="ehint">Nothing was written. You can retry the approval, or re-run the investigation.</div>
+        </div>
+        <div class="wbfoot"><button class="btn" id="btnApproveRetry" type="button">Retry approval</button></div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- ============================================================ 5. ACTIONS -->
+  <div class="actions">
+    <button class="btn primary" id="btnRun" type="button">Run investigation</button>
+    <button class="btn" id="btnReset" type="button">Reset scenario</button>
+    <span class="hint" id="actionHint">Replay runs at {{ replay_speed }}× — the recorded run took 129.5s of real wall clock.</span>
+  </div>
+
+  <footer>
+    SECOND UNIT · agentic triage for the render farm.<br>
+    Scenario <span id="fScenario">{{ scenario.id }}</span> · shot {{ scenario.shot }} ·
+    {{ scenario.department }} · review deadline {{ scenario.review_deadline }}.<br>
+    No accounts, no tracking, no external requests from this page.
+  </footer>
+</main>
+<script>
+/* ============================================================================
+   Second Unit — client. Vanilla, no framework, no build.
+
+   The whole client is a switch on `event.type`. The recorded run embedded below and the
+   live SSE stream emit the *same* events, so `handle()` is the only renderer and there is
+   no second code path to keep in sync. Landing on the page replays the recorded run
+   instantly (a judge should see a finding, not an empty console); "Run investigation"
+   replays it over SSE at recorded pacing so the multi-step pipeline is visible happening.
+   ========================================================================== */
+"use strict";
+
+const RECORDED = {{ fixture|tojson }};
+const GRAFANA  = {{ grafana_url|tojson }};
+const $ = (id) => document.getElementById(id);
+
+/* Agent output reaches the DOM here — root causes, log lines, tool arguments. It is model
+   output relayed from a live stack, so it is escaped rather than trusted, everywhere. */
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g,
+  (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+const STATE = {
+  runId: null, es: null, live: false, done: false, failed: false,
+  stages: {}, evidence: [], writeback: [], approved: false,
+};
+
+/* ------------------------------------------------------------------ chrome */
+function zone(id, state) { $(id).dataset.state = state; }
+function status(text, kind) {
+  $("statusText").textContent = text;
+  $("dot").className = "dot " + (kind || "");
+}
+
+/* ------------------------------------------------------------------ persona */
+const PERSONA_QUERIES = { td: true, supervisor: true, producer: false };
+function applyPersona(p) {
+  document.documentElement.dataset.persona = p;
+  document.querySelectorAll(".personas button").forEach((b) =>
+    b.setAttribute("aria-selected", String(b.dataset.persona === p)));
+  /* The toggle is not only wording. A TD wants the PromQL; a producer wants the decision.
+     So the persona also sets how much machinery is on screen by default. */
+  setQueries(PERSONA_QUERIES[p]);
+  document.querySelectorAll(".stage").forEach((s) => {
+    if (STATE.live) return;                       // never fight a running stream
+    const hasBody = s.dataset.state === "done" || s.dataset.state === "failed";
+    const open = (p === "td" && hasBody && s.dataset.stage !== "watchtower") ? "1" : "0";
+    s.dataset.open = open;
+    s.querySelector(".stage-head").setAttribute("aria-expanded", open === "1" ? "true" : "false");
+  });
+}
+function setQueries(show) {
+  $("evZone").classList.toggle("hide-queries", !show);
+  $("btnEvToggle").textContent = show ? "Hide queries" : "Show queries";
+}
+document.querySelectorAll(".personas button").forEach((b) =>
+  b.addEventListener("click", () => applyPersona(b.dataset.persona)));
+$("btnEvToggle").addEventListener("click", () =>
+  setQueries($("evZone").classList.contains("hide-queries")));
+
+/* ------------------------------------------------------------------ verdict */
+function renderVerdict(v) {
+  $("verdict").dataset.severity = v.severity || "critical";
+  $("vSeverity").textContent = "⚠ " + String(v.severity || "").toUpperCase();
+  $("vSubject").textContent = v.subject || "";
+  $("vStamp").textContent = STATE.live ? "live · just now" : "recorded " + (RECORDED.scenario.recorded_at || "");
+  for (const pid of ["td", "supervisor", "producer"]) {
+    const frame = document.querySelector('.frame[data-persona="' + pid + '"]');
+    const p = (v.personas || {})[pid] || {};
+    for (const f of ["headline", "sub", "action", "risk"]) {
+      const node = frame.querySelector('[data-f="' + f + '"]');
+      if (node) node.textContent = p[f] || "";
+    }
+  }
+  $("vMetrics").innerHTML = (v.metrics || []).map((m) =>
+    '<li><span class="k">' + esc(m.label) + '</span><span class="v">' + esc(m.value) +
+    (m.was ? ' <span class="was">(was ' + esc(m.was) + ")</span>" : "") + "</span></li>").join("");
+  zone("verdictZone", "ready");
+}
+
+/* ------------------------------------------------------------------ stages */
+function stageRow(id, label, role) {
+  let li = document.querySelector('.stage[data-stage="' + id + '"]');
+  if (li) return li;
+  li = document.createElement("li");
+  li.className = "stage";
+  li.dataset.stage = id; li.dataset.state = "pending"; li.dataset.open = "0";
+  li.innerHTML =
+    '<button class="stage-head" type="button" aria-expanded="false">' +
+      '<span class="caret">▸</span>' +
+      '<span class="stage-name">' + esc(label) + "</span>" +
+      '<span class="stage-role">' + esc(role || "") + "</span>" +
+      '<span class="stage-pill">pending</span>' +
+      '<span class="stage-meta">—</span>' +
+    "</button><div class='stage-body'></div>";
+  const head = li.querySelector(".stage-head");
+  head.addEventListener("click", () => {
+    const open = li.dataset.open === "1" ? "0" : "1";
+    li.dataset.open = open;
+    head.setAttribute("aria-expanded", open === "1" ? "true" : "false");
+  });
+  $("stages").appendChild(li);
+  return li;
+}
+function stageState(id, s, pill, meta) {
+  const li = stageRow(id, id, "");
+  li.dataset.state = s;
+  if (pill) li.querySelector(".stage-pill").textContent = pill;
+  if (meta) li.querySelector(".stage-meta").textContent = meta;
+  return li;
+}
+function addToolCall(ev) {
+  const li = stageRow(ev.stage, ev.stage, "");
+  let list = li.querySelector(".calls");
+  if (!list) {
+    const box = document.createElement("div");
+    box.className = "kv";
+    box.innerHTML = '<div class="k">MCP tool calls</div><ul class="calls"></ul>';
+    li.querySelector(".stage-body").appendChild(box);
+    list = box.querySelector(".calls");
+  }
+  /* The interesting argument is the query itself — that is what makes a tool call
+     auditable rather than a number. Same key order as ToolCallRecord.one_line(). */
+  const keys = ["expr", "logql", "query", "regex", "label", "datasourceUid"];
+  const args = ev.args || {};
+  const shown = keys.filter((k) => k in args).map((k) => k + "=" + args[k]).join(", ");
+  const row = document.createElement("li");
+  row.innerHTML = '<span class="n">' + esc(ev.name) + "</span>" +
+    '<span class="a">' + esc(shown || "…") + "</span>" +
+    '<span class="ms">' + (ev.ms ? ev.ms + "ms" : "") + "</span>";
+  list.appendChild(row);
+  const n = list.children.length;
+  li.querySelector(".stage-meta").textContent = n + " tool call" + (n === 1 ? "" : "s") + " · running";
+}
+
+const KV = (k, v) => '<div class="kv"><div class="k">' + k + '</div><div class="v">' + v + "</div></div>";
+
+function renderStageOutput(id, out) {
+  const li = stageRow(id, id, "");
+  const body = li.querySelector(".stage-body");
+  const parts = [];
+
+  if (id === "watchtower") {
+    parts.push(KV("Summary", esc(out.summary)));
+    if ((out.firing_alerts || []).length)
+      parts.push(KV("Firing alerts", '<ul class="tags">' +
+        out.firing_alerts.map((a) => '<li class="hot">' + esc(a) + "</li>").join("") + "</ul>"));
+    if ((out.error_signatures || []).length)
+      parts.push(KV(out.error_signatures.length + " distinct error signatures",
+        '<ul class="sigs">' + out.error_signatures.map((s) => "<li>" + esc(s) + "</li>").join("") + "</ul>"));
+    if ((out.suspect_entities || []).length)
+      parts.push(KV("Suspects", '<ul class="tags">' +
+        out.suspect_entities.map((s) => "<li>" + esc(s) + "</li>").join("") + "</ul>"));
+  }
+
+  if (id === "diagnostician") {
+    parts.push(KV("Root cause <span class='stage-pill'>" + esc(out.confidence) + " confidence</span>",
+      esc(out.root_cause)));
+    if ((out.causal_chain || []).length)
+      parts.push(KV("Order of events", '<ol class="chain">' +
+        out.causal_chain.map((c) => "<li>" + esc(c) + "</li>").join("") + "</ol>"));
+    if ((out.hypotheses || []).length) {
+      /* Confirmed first, then what was ruled out. Showing the decoy *dismissed* is the
+         difference between reasoning and grep, so it is never collapsed away. */
+      const order = { confirmed: 0, unresolved: 1, ruled_out: 2 };
+      const hs = out.hypotheses.slice().sort((a, b) => (order[a.verdict] ?? 9) - (order[b.verdict] ?? 9));
+      parts.push(KV("Hypotheses considered", '<ul class="hyp">' + hs.map((h) =>
+        '<li data-verdict="' + esc(h.verdict) + '"><div class="top">' +
+          '<span class="mark">' + (h.verdict === "confirmed" ? "✓" : h.verdict === "ruled_out" ? "✗" : "?") + "</span>" +
+          '<span class="stmt">' + esc(h.statement) + "</span>" +
+          '<span class="badge">' + esc(h.verdict.replace("_", " ")) + " · " + esc(h.confidence) + "</span>" +
+        '</div><div class="why">' + esc(h.reasoning) + "</div></li>").join("") + "</ul>"));
+    }
+  }
+
+  if (id === "impact_forecaster") {
+    parts.push(KV("Forecast",
+      esc(out.shot) + " " + esc(out.department) + " · " + esc(out.frames_remaining) +
+      " frames left at " + esc(out.throughput_now) + " fr/min (baseline " +
+      esc(out.throughput_baseline) + ") · ETA " + esc(out.eta_at_current_rate) +
+      " against a " + esc(out.deadline) + " deadline — " + esc(out.slip_human) + " late."));
+    if ((out.notes || []).length)
+      parts.push(KV("Working", '<ol class="chain">' +
+        out.notes.map((n) => "<li>" + esc(n) + "</li>").join("") + "</ol>"));
+  }
+
+  /* Keep the tool-call ledger; it is the proof the stage did work. */
+  const calls = body.querySelector(".kv");
+  body.innerHTML = parts.join("");
+  if (calls) body.appendChild(calls);
+}
+
+/* ------------------------------------------------------------------ evidence */
+function deeplink(tool, query) {
+  if (!GRAFANA) return null;
+  /* Grafana's Explore accepts a JSON pane in `left=`. Cheap, stable across versions, and
+     it means a sceptical judge can re-run the agent's exact query in one click. */
+  const isLog = /loki|log/i.test(tool);
+  const pane = {
+    datasource: isLog ? "grafanacloud-logs" : "grafanacloud-prom",
+    queries: [isLog ? { refId: "A", expr: query, queryType: "range" } : { refId: "A", expr: query }],
+    range: { from: "now-3h", to: "now" },
+  };
+  return GRAFANA + "/explore?orgId=1&left=" + encodeURIComponent(JSON.stringify(pane));
+}
+function renderEvidence() {
+  if (!STATE.evidence.length) { zone("evZone", "empty"); return; }
+  $("evList").innerHTML = STATE.evidence.map((e) => {
+    const link = deeplink(e.tool, e.query);
+    return "<li>" +
+      '<div class="src">' + esc(e.stage.replace("_", " ")) + "</div>" +
+      '<div class="claim">' + esc(e.claim) + "</div>" +
+      '<div class="q"><span class="tool">' + esc(e.tool) + '</span><span class="query">' + esc(e.query) + "</span></div>" +
+      '<div class="obs">' + esc(e.observed) + "</div>" +
+      '<div class="qcount">' + esc(e.tool) + " · query and raw result hidden for this view</div>" +
+      (link
+        ? '<a class="deeplink" target="_blank" rel="noopener" href="' + esc(link) + '">open in Grafana ↗</a>'
+        : '<span class="deeplink" aria-disabled="true" title="GRAFANA_URL is not configured on this deployment">deeplink unavailable ↗</span>') +
+      "</li>";
+  }).join("");
+  $("evNote").textContent = STATE.evidence.length + " cited facts · " +
+    (GRAFANA ? "deeplinks live" : "deeplinks off (GRAFANA_URL unset)");
+  zone("evZone", "ready");
+}
+
+/* ------------------------------------------------------------------ write-back */
+function renderWriteback(items) {
+  STATE.writeback = items;
+  $("wbList").innerHTML = items.map((i) =>
+    '<li data-id="' + esc(i.id) + '"><label><input type="checkbox" checked value="' + esc(i.id) + '">' +
+      '<span><span class="t">' + esc(i.title) + "</span>" +
+      '<span class="d">' + esc(i.detail) + "</span>" +
+      '<span class="m">' + esc(i.target) + " · needs " + esc(i.scope) + "</span></span></label></li>").join("");
+  $("btnApprove").disabled = false;
+  $("wbResult").hidden = true;
+  zone("wbZone", "ready");
+}
+async function approve() {
+  const btn = $("btnApprove");
+  const picked = [...document.querySelectorAll("#wbList input:checked")].map((i) => i.value);
+  if (!picked.length) {
+    zone("wbZone", "error");
+    $("wbErrMsg").textContent = "Select at least one item to write.";
+    return;
+  }
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span>Writing…';
+  try {
+    if (!STATE.runId) throw new Error("no run to approve — press Run investigation first");
+    const r = await fetch("/api/run/" + STATE.runId + "/approve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items: picked }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.detail || r.status + " " + r.statusText);
+    STATE.approved = true;
+    picked.forEach((id) => {
+      const li = document.querySelector('#wbList li[data-id="' + id + '"]');
+      if (li) { li.dataset.done = "1"; li.querySelector("input").disabled = true; }
+    });
+    const box = $("wbResult");
+    box.hidden = false;
+    box.innerHTML = '<div class="approved"><div class="t">' +
+      (data.already_approved ? "Already approved" : "Approved by a human · " + data.items.length + " write(s) queued") +
+      '</div><div class="d">' + esc(data.message) + "</div>" +
+      '<ul class="calls" style="margin-top:.5rem">' + (data.items || []).map((i) =>
+        '<li><span class="n">' + esc(i.id) + '</span><span class="a">' + esc(i.scope) +
+        " · " + esc(i.effect) + "</span></li>").join("") + "</ul></div>";
+    btn.textContent = "Approved ✓";
+    zone("wbZone", "ready");
+  } catch (err) {
+    zone("wbZone", "error");
+    $("wbErrMsg").textContent = String(err.message || err);
+    btn.disabled = false;
+    btn.textContent = "Approve and write";
+  }
+}
+$("btnApprove").addEventListener("click", approve);
+$("btnApproveRetry").addEventListener("click", () => { zone("wbZone", "ready"); approve(); });
+
+/* ------------------------------------------------------------------ the switch */
+function handle(ev) {
+  switch (ev.type) {
+    case "hello":
+      break;
+
+    case "run_started":
+      STATE.stages = {}; STATE.evidence = []; STATE.done = false; STATE.failed = false;
+      $("stages").innerHTML = "";
+      $("stagesErr").hidden = true;
+      (ev.stages || []).forEach((s) => stageRow(s.id, s.label, s.role));
+      $("stagesNote").textContent = (ev.stages || []).length + " stages · deterministic order";
+      zone("stagesZone", "ready");
+      zone("verdictZone", STATE.live ? "loading" : "ready");
+      zone("evZone", STATE.live ? "loading" : "empty");
+      zone("wbZone", STATE.live ? "loading" : "empty");
+      break;
+
+    case "stage_started":
+      stageState(ev.stage, "running", "running", "working…");
+      if (STATE.live) {
+        const li = document.querySelector('.stage[data-stage="' + ev.stage + '"]');
+        li.dataset.open = "1";                       // follow the work as it happens
+        li.querySelector(".stage-head").setAttribute("aria-expanded", "true");
+      }
+      break;
+
+    case "tool_call":
+      addToolCall(ev);
+      break;
+
+    case "stage_done": {
+      const meta = ev.tool_calls + " tool calls · " + Number(ev.seconds).toFixed(1) + "s";
+      stageState(ev.stage, "done", "done", meta);
+      renderStageOutput(ev.stage, ev.output || {});
+      STATE.stages[ev.stage] = ev.output || {};
+      ((ev.output || {}).evidence || []).forEach((e) =>
+        STATE.evidence.push(Object.assign({ stage: ev.stage }, e)));
+      renderEvidence();
+      break;
+    }
+
+    case "verdict":
+      renderVerdict(ev);
+      break;
+
+    case "writeback_proposed":
+      renderWriteback(ev.items || []);
+      break;
+
+    case "run_done":
+      STATE.done = true;
+      status(STATE.live ? "run complete" : "recorded run", "live");
+      $("actionHint").textContent = ev.total_tool_calls + " MCP tool calls across " +
+        ev.stages_ok + " stages · " + Number(ev.seconds).toFixed(1) + "s of real pipeline time.";
+      break;
+
+    /* Failure is a rendered state, not a blank page. The stage that broke says why, the
+       verdict zone explains that there is no verdict, and the write-back is withdrawn —
+       because an unproven diagnosis must not be writable. */
+    case "stage_failed":
+      const fli = stageState(ev.stage, "failed", "failed", "failed");
+      const fbody = fli.querySelector(".stage-body");
+      const fcard = document.createElement("div");
+      fcard.className = "errcard";
+      fcard.style.marginTop = ".8rem";
+      fcard.innerHTML = '<div class="etitle">✗ ' + esc(ev.stage) + " failed</div>" +
+        '<div class="emsg">' + esc(ev.error || "unknown stage error") + "</div>" +
+        (ev.hint ? '<div class="ehint">' + esc(ev.hint) + "</div>" : "");
+      fbody.insertBefore(fcard, fbody.firstChild);
+      fli.dataset.open = "1";
+      fli.querySelector(".stage-head").setAttribute("aria-expanded", "true");
+      $("stagesErrMsg").textContent = ev.error || "unknown stage error";
+      $("stagesErr").hidden = false;
+      /* Stay in "ready": the stage list is the record of how far the run got, and the
+         verdict's error text points the reader at it. Hiding it would contradict that. */
+      zone("stagesZone", "ready");
+      break;
+
+    case "run_failed":
+      STATE.failed = true; STATE.done = true;
+      $("vErrMsg").textContent = ev.error || "the run failed";
+      zone("verdictZone", "error");
+      if (!STATE.evidence.length) { $("evErrMsg").textContent = ev.error || ""; zone("evZone", "error"); }
+      zone("wbZone", "empty");
+      status("run failed", "bad");
+      break;
+  }
+}
+
+/* ------------------------------------------------------------------ runs */
+function closeStream() {
+  if (STATE.es) { STATE.es.close(); STATE.es = null; }
+}
+async function runInvestigation() {
+  closeStream();
+  const btn = $("btnRun");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span>Investigating…';
+  status("starting…", "busy");
+  zone("verdictZone", "loading");
+  zone("stagesZone", "loading");
+  zone("evZone", "loading");
+  zone("wbZone", "loading");
+  try {
+    /* `?inject=<stage>` on the page URL is forwarded so the failure path can be demoed
+       against the real transport rather than faked in the client. */
+    const inject = new URLSearchParams(location.search).get("inject") || "";
+    const r = await fetch("/api/run" + (inject ? "?inject=" + encodeURIComponent(inject) : ""),
+      { method: "POST" });
+    if (!r.ok) throw new Error("could not start a run: " + r.status + " " + r.statusText);
+    const { run_id } = await r.json();
+    STATE.runId = run_id; STATE.live = true; STATE.done = false;
+    status("live", "busy");
+
+    const es = new EventSource("/api/run/" + run_id + "/stream");
+    STATE.es = es;
+    es.onmessage = (m) => {
+      let ev;
+      try { ev = JSON.parse(m.data); }
+      catch (_) { return; }                 // a malformed frame is not worth killing the run
+      handle(ev);
+      if (ev.type === "run_done" || ev.type === "run_failed") {
+        /* EventSource reconnects automatically when the server closes. Closing it here is
+           what stops the whole run replaying on a loop. */
+        closeStream();
+        btn.disabled = false;
+        btn.textContent = "Run again";
+      }
+    };
+    es.onerror = () => {
+      if (STATE.done) return;               // normal end-of-stream close
+      closeStream();
+      $("vErrMsg").textContent = "The event stream dropped before the run finished. " +
+        "The server may have restarted, or a proxy closed the connection.";
+      zone("verdictZone", "error");
+      if (document.querySelector(".stage")) {
+        $("stagesErrMsg").textContent = "connection to /api/run/" + run_id + "/stream lost";
+        $("stagesErr").hidden = false;
+        zone("stagesZone", "ready");
+      } else {
+        $("stagesErrMsg2").textContent = "connection to /api/run/" + run_id + "/stream lost";
+        zone("stagesZone", "error");
+      }
+      zone("wbZone", "empty");
+      status("stream lost", "bad");
+      btn.disabled = false;
+      btn.textContent = "Retry investigation";
+    };
+  } catch (err) {
+    $("vErrMsg").textContent = String(err.message || err);
+    zone("verdictZone", "error");
+    $("stagesErrMsg2").textContent = String(err.message || err);
+    zone("stagesZone", "error");
+    zone("evZone", "empty");
+    zone("wbZone", "empty");
+    status("error", "bad");
+    btn.disabled = false;
+    btn.textContent = "Retry investigation";
+  }
+}
+$("btnRun").addEventListener("click", runInvestigation);
+
+$("btnReset").addEventListener("click", async () => {
+  closeStream();
+  const btn = $("btnReset");
+  btn.disabled = true;
+  try { await fetch("/api/reset", { method: "POST" }); }
+  catch (_) { /* a failed reset still resets the page; say nothing and clear the view */ }
+  STATE.runId = null; STATE.live = false; STATE.done = false; STATE.approved = false;
+  STATE.stages = {}; STATE.evidence = []; STATE.writeback = [];
+  ["verdictZone", "stagesZone", "evZone", "wbZone"].forEach((z) => zone(z, "empty"));
+  $("stages").innerHTML = "";
+  $("stagesErr").hidden = true;
+  $("btnRun").disabled = false;
+  $("btnRun").textContent = "Run investigation";
+  $("btnApprove").disabled = false;
+  $("btnApprove").textContent = "Approve and write";
+  $("wbResult").hidden = true;
+  $("actionHint").textContent = "Scenario reset. Incident clock back to t+0.";
+  status("idle", "");
+  btn.disabled = false;
+});
+
+/* ------------------------------------------------------------------ boot */
+function hydrateRecorded() {
+  /* Instant, un-paced replay of the recorded run. Same events, same renderer — the only
+     difference from a live run is that STATE.live is false, so nothing auto-expands and
+     the verdict is stamped "recorded". */
+  STATE.live = false;
+  for (const item of RECORDED.events) handle(item.event);
+  applyPersona(document.documentElement.dataset.persona);
+  status("recorded run", "live");
+}
+
+(function boot() {
+  const demo = new URLSearchParams(location.search).get("demo");
+  applyPersona(new URLSearchParams(location.search).get("persona") || "td");
+
+  if (demo === "empty") {
+    ["verdictZone", "stagesZone", "evZone", "wbZone"].forEach((z) => zone(z, "empty"));
+    status("idle", "");
+    return;
+  }
+  if (demo === "loading") {
+    ["verdictZone", "stagesZone", "evZone", "wbZone"].forEach((z) => zone(z, "loading"));
+    status("live", "busy");
+    return;
+  }
+  if (demo === "error") {
+    /* Replay the recorded run only as far as Watchtower, then fail. A blank error page
+       would not show what the real failure mode looks like: a partial, honest record. */
+    for (const item of RECORDED.events) {
+      const e = item.event;
+      if (e.type === "stage_started" && e.stage === "diagnostician") { handle(e); break; }
+      handle(e);
+    }
+    handle({ type: "tool_call", stage: "diagnostician", name: "query_prometheus",
+      args: { expr: 'avg by (node) (render_node_gpu_temp_celsius)' }, ms: 3120 });
+    handle({ type: "stage_failed", stage: "diagnostician",
+      error: "unparseable output: ValidationError: 3 validation errors for Diagnosis" });
+    handle({ type: "run_failed", error: "pipeline halted at diagnostician" });
+    applyPersona(document.documentElement.dataset.persona);
+    return;
+  }
+
+  hydrateRecorded();
+
+  /* Register the recorded run server-side so the approval gate is live on landing. The
+     page is still fully readable if this fails; the Approve button then reports why. */
+  fetch("/api/run?mode=recorded", { method: "POST" })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => { if (d) STATE.runId = d.run_id; })
+    .catch(() => { /* approval will surface the failure on click */ });
+})();
+</script>
+</body>
+</html>

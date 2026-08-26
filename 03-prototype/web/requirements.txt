@@ -1,0 +1,4 @@
+# Second Unit — web UI. Three dependencies, on purpose: no frontend toolchain exists here.
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+jinja2==3.1.6

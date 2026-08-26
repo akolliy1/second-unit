@@ -1,0 +1,26 @@
+# The telemetry seeder, as a long-running Cloud Run Job.
+#
+# Until now this ran on a laptop, which means the hosted demo was one closed terminal away
+# from a farm with no telemetry — and judging happens days after submission, at an hour
+# nobody chooses. A judge who arrives to an empty stack sees a broken submission, however
+# good the agent is.
+FROM python:3.11-slim
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends tini \
+ && rm -rf /var/lib/apt/lists/* \
+ && test -x /usr/bin/tini
+
+WORKDIR /srv
+COPY deploy/requirements-seeder.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+COPY telemetry ./
+RUN test -f /srv/seed.py && test -f /srv/scenario.py && test -f /srv/push.py \
+ && python -c "import cramjam, requests; print('deps ok')"
+
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+
+# --loop is the whole point: fault, cascade, repair, restart, forever, so there is always a
+# live incident in range. --start-minute -25 gives a healthy baseline before the first fault
+# so the forecaster has something to compare against.
+ENTRYPOINT ["/usr/bin/tini", "--", "python", "seed.py", "--live", "--loop", "--start-minute", "-25"]

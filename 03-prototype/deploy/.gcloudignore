@@ -1,0 +1,11 @@
+# Never ship secrets or local junk into a build context that produces a public image.
+.env
+*.env
+!deploy/requirements.txt
+.venv/
+**/.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+.DS_Store
+spike/.venv/

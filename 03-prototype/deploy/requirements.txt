@@ -1,0 +1,14 @@
+# Runtime only. Pins that matter are commented where a wrong version fails silently.
+fastapi>=0.115
+uvicorn[standard]>=0.30
+jinja2>=3.1
+python-dotenv>=1.0
+requests>=2.31
+cramjam>=2.8
+
+google-adk[mcp]>=2.6.0
+google-cloud-aiplatform[agent_engines,adk]>=1.101.0
+# HARD CEILING: google-adk needs mcp>=1.24,<2 but declares it only as an extra, so a bare
+# `mcp` resolves to 2.x, pip reports no conflict, and every ADK MCP import dies with
+# "No module named 'mcp.shared.session'". Found 2026-08-25. Do not relax.
+mcp>=1.24,<2

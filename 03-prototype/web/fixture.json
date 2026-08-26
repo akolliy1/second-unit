@@ -1,0 +1,293 @@
+{
+  "_comment": [
+    "A recorded run, so the page is fully developable and demoable without the agent or the",
+    "Grafana stack. Watchtower and Diagnostician payloads are the REAL output of the",
+    "2026-08-26 run against the seeded stack (9 and 6 tool calls, 45.0s and 66.1s).",
+    "The impact_forecaster stage is not built yet: its payload is invented, but every number",
+    "in it is one of the real measured numbers (1619 frames, 10.1 -> 5.5 fr/min, 2h18m slip).",
+    "Field names match second_unit/schemas.py exactly so the live stream can replace this",
+    "file with no client change. 'after_ms' is replay pacing only and is stripped by app.py."
+  ],
+  "scenario": {
+    "id": "sh042-render-07-ecc",
+    "recorded_at": "2026-08-26T13:41:00Z",
+    "shot": "SH042",
+    "department": "lighting",
+    "review_deadline": "Fri 14:00"
+  },
+  "events": [
+    {
+      "after_ms": 0,
+      "event": {
+        "type": "run_started",
+        "scenario": "sh042-render-07-ecc",
+        "stages": [
+          {"id": "watchtower", "label": "Watchtower", "role": "what is on fire"},
+          {"id": "diagnostician", "label": "Diagnostician", "role": "why"},
+          {"id": "impact_forecaster", "label": "Impact Forecaster", "role": "what it costs"}
+        ]
+      }
+    },
+
+    {"after_ms": 400, "event": {"type": "stage_started", "stage": "watchtower"}},
+
+    {"after_ms": 1900, "event": {"type": "tool_call", "stage": "watchtower", "name": "list_datasources", "args": {}, "ms": 1412}},
+    {"after_ms": 2100, "event": {"type": "tool_call", "stage": "watchtower", "name": "list_alert_groups", "args": {}, "ms": 1880}},
+    {"after_ms": 3400, "event": {"type": "tool_call", "stage": "watchtower", "name": "list_prometheus_metric_names", "args": {"regex": "render_.*"}, "ms": 1103}},
+    {"after_ms": 5200, "event": {"type": "tool_call", "stage": "watchtower", "name": "query_prometheus", "args": {"datasourceUid": "grafanacloud-prom", "expr": "sum by (department) (render_queue_depth)"}, "ms": 2310}},
+    {"after_ms": 6800, "event": {"type": "tool_call", "stage": "watchtower", "name": "query_prometheus", "args": {"datasourceUid": "grafanacloud-prom", "expr": "sum by (node) (increase(render_frames_failed_total[30m])) > 0"}, "ms": 2044}},
+    {"after_ms": 9100, "event": {"type": "tool_call", "stage": "watchtower", "name": "find_error_pattern_logs", "args": {"datasourceUid": "grafanacloud-logs", "logql": "{service=~\"render-node|render-scheduler\"}"}, "ms": 6512}},
+    {"after_ms": 6200, "event": {"type": "tool_call", "stage": "watchtower", "name": "query_loki_logs", "args": {"datasourceUid": "grafanacloud-logs", "logql": "{service=\"render-node\"} |= \"uncorrectable\""}, "ms": 4180}},
+    {"after_ms": 5100, "event": {"type": "tool_call", "stage": "watchtower", "name": "query_loki_logs", "args": {"datasourceUid": "grafanacloud-logs", "logql": "{service=\"render-scheduler\"} |= \"frame failed\""}, "ms": 3902}},
+    {"after_ms": 4700, "event": {"type": "tool_call", "stage": "watchtower", "name": "query_prometheus", "args": {"datasourceUid": "grafanacloud-prom", "expr": "avg by (node) (render_node_gpu_temp_celsius)"}, "ms": 2260}},
+
+    {
+      "after_ms": 1400,
+      "event": {
+        "type": "stage_done",
+        "stage": "watchtower",
+        "seconds": 45.0,
+        "tool_calls": 9,
+        "output": {
+          "summary": "The render farm is experiencing significant frame failures on render-07 due to GPU faults, causing a substantial increase in the lighting department's render queue depth.",
+          "firing_alerts": [
+            "RenderQueueDepthHigh (lighting) — firing 1h 52m",
+            "RenderNodeFrameFailures (render-07) — firing 1h 47m"
+          ],
+          "error_signatures": [
+            "CUDA error: uncorrectable ECC error encountered (cudaErrorECCUncorrectable) at kernel launch",
+            "NVRM: Xid (PCI:0000:41:00): 48, pid=0, GPU has fallen off the bus. uncorrectable ECC error encountered on GPU 0",
+            "level=error service=render-scheduler shot=SH042 department=lighting frame=1184 node=render-07 exit_code=139 msg=\"frame failed, requeueing\" retry=1/3"
+          ],
+          "suspect_entities": ["render-07", "lighting", "SH042", "render-scheduler"],
+          "evidence": [
+            {
+              "claim": "The lighting queue is more than three times its normal depth.",
+              "tool": "query_prometheus",
+              "query": "sum by (department) (render_queue_depth)",
+              "observed": "lighting=62, animation=9, fx=14, comp=6 — lighting sat at 18 before 02:14."
+            },
+            {
+              "claim": "Frame failures are confined to a single node.",
+              "tool": "query_prometheus",
+              "query": "sum by (node) (increase(render_frames_failed_total[30m])) > 0",
+              "observed": "render-07=47. No other node returned a series."
+            },
+            {
+              "claim": "render-07 is logging uncorrectable ECC faults at the driver level.",
+              "tool": "query_loki_logs",
+              "query": "{service=\"render-node\"} |= \"uncorrectable\"",
+              "observed": "41 lines since 02:14, all node=render-07, all Xid 48 / cudaErrorECCUncorrectable."
+            }
+          ]
+        }
+      }
+    },
+
+    {"after_ms": 700, "event": {"type": "stage_started", "stage": "diagnostician"}},
+
+    {"after_ms": 3900, "event": {"type": "tool_call", "stage": "diagnostician", "name": "list_prometheus_label_values", "args": {"datasourceUid": "grafanacloud-prom", "label": "node"}, "ms": 1740}},
+    {"after_ms": 9200, "event": {"type": "tool_call", "stage": "diagnostician", "name": "query_prometheus", "args": {"datasourceUid": "grafanacloud-prom", "expr": "avg by (node) (render_node_gpu_temp_celsius{node=~\"render-01|render-07|render-08|render-09\"})"}, "ms": 3120}},
+    {"after_ms": 12400, "event": {"type": "tool_call", "stage": "diagnostician", "name": "query_prometheus", "args": {"datasourceUid": "grafanacloud-prom", "expr": "sum by (node, reason) (increase(render_frames_failed_total[90m])) > 0"}, "ms": 2880}},
+    {"after_ms": 14100, "event": {"type": "tool_call", "stage": "diagnostician", "name": "query_loki_logs", "args": {"datasourceUid": "grafanacloud-logs", "logql": "{node=\"render-07\"} |= \"Xid\""}, "ms": 4410}},
+    {"after_ms": 11800, "event": {"type": "tool_call", "stage": "diagnostician", "name": "query_prometheus", "args": {"datasourceUid": "grafanacloud-prom", "expr": "sum by (department) (render_queue_depth{department=\"lighting\"})"}, "ms": 2190}},
+    {"after_ms": 12300, "event": {"type": "tool_call", "stage": "diagnostician", "name": "query_loki_logs", "args": {"datasourceUid": "grafanacloud-logs", "logql": "{department=\"lighting\"} |= \"error\" != \"render-07\""}, "ms": 5030}},
+
+    {
+      "after_ms": 2400,
+      "event": {
+        "type": "stage_done",
+        "stage": "diagnostician",
+        "seconds": 66.1,
+        "tool_calls": 6,
+        "output": {
+          "root_cause": "The GPU in render-07 is failing due to a hardware fault, likely related to overheating, which is causing all of its assigned render frames to fail.",
+          "confidence": "high",
+          "causal_chain": [
+            "The GPU on render-07 is running at 80-86 C against a peer range of 60-65 C.",
+            "That thermal stress manifests as GPU instability, logged as uncorrectable ECC errors and NVRM Xid 48.",
+            "Every frame of SH042's lighting pass scheduled onto render-07 fails with exit code 139.",
+            "The render-scheduler requeues each failed frame onto the same faulty node, forming a failure loop.",
+            "The lighting department's queue depth climbs as requeued frames accumulate faster than they clear."
+          ],
+          "hypotheses": [
+            {
+              "statement": "Render node render-07 has a critical hardware fault with its GPU",
+              "verdict": "confirmed",
+              "confidence": "high",
+              "reasoning": "render-07 reports 80-86 C GPU temperature while its peers sit at 60-65 C, and it is the only node emitting uncorrectable ECC and Xid 48 events. Every failed frame in the last 90 minutes was assigned to it."
+            },
+            {
+              "statement": "Other render nodes (render-01, 08, 09, 10, 11) are also failing and contributing",
+              "verdict": "ruled_out",
+              "confidence": "high",
+              "reasoning": "increase(render_frames_failed_total[90m]) returns a series for render-07 only. The other five nodes report zero failures and normal GPU temperatures."
+            },
+            {
+              "statement": "The issue is caused by a bug in the render software for SH042 or the lighting department",
+              "verdict": "ruled_out",
+              "confidence": "medium",
+              "reasoning": "SH042 lighting frames scheduled onto healthy nodes complete normally, and lighting log lines excluding render-07 contain no render-software errors. The failure follows the node, not the shot or the department."
+            }
+          ],
+          "affected_shots": ["SH042"],
+          "evidence": [
+            {
+              "claim": "render-07's GPU is 20 C hotter than every peer node.",
+              "tool": "query_prometheus",
+              "query": "avg by (node) (render_node_gpu_temp_celsius{node=~\"render-01|render-07|render-08|render-09\"})",
+              "observed": "render-07=84.2, render-01=62.1, render-08=61.4, render-09=63.8"
+            },
+            {
+              "claim": "All frame failures in the last 90 minutes belong to one node and one reason.",
+              "tool": "query_prometheus",
+              "query": "sum by (node, reason) (increase(render_frames_failed_total[90m])) > 0",
+              "observed": "{node=\"render-07\", reason=\"gpu_fault\"}=138. No other series returned."
+            },
+            {
+              "claim": "The driver has been resetting the GPU since 02:14.",
+              "tool": "query_loki_logs",
+              "query": "{node=\"render-07\"} |= \"Xid\"",
+              "observed": "First Xid 48 at 02:14:07, most recent 41s ago; 41 occurrences, none on any other node."
+            },
+            {
+              "claim": "The scheduler is returning failed frames to the node that failed them.",
+              "tool": "query_loki_logs",
+              "query": "{service=\"render-scheduler\"} |= \"frame failed\"",
+              "observed": "retry=1/3 then retry=2/3 for frame 1184, both dispatched to node=render-07."
+            }
+          ]
+        }
+      }
+    },
+
+    {"after_ms": 700, "event": {"type": "stage_started", "stage": "impact_forecaster"}},
+
+    {"after_ms": 6300, "event": {"type": "tool_call", "stage": "impact_forecaster", "name": "query_prometheus", "args": {"datasourceUid": "grafanacloud-prom", "expr": "sum(render_frames_remaining{shot=\"SH042\", department=\"lighting\"})"}, "ms": 2260}},
+    {"after_ms": 8100, "event": {"type": "tool_call", "stage": "impact_forecaster", "name": "query_prometheus", "args": {"datasourceUid": "grafanacloud-prom", "expr": "sum(rate(render_frames_completed_total{shot=\"SH042\"}[15m])) * 60"}, "ms": 2740}},
+
+    {
+      "after_ms": 2100,
+      "event": {
+        "type": "stage_done",
+        "stage": "impact_forecaster",
+        "seconds": 18.4,
+        "tool_calls": 2,
+        "output": {
+          "shot": "SH042",
+          "department": "lighting",
+          "frames_remaining": 1619,
+          "throughput_now": 5.5,
+          "throughput_baseline": 10.1,
+          "capacity_loss_pct": 46,
+          "eta_at_current_rate": "Fri 16:18",
+          "eta_at_baseline": "Fri 13:40",
+          "deadline": "Fri 14:00",
+          "slip_minutes": 138,
+          "slip_human": "2h 18m",
+          "idle_artists": 3,
+          "idle_from": "08:00",
+          "confidence": "high",
+          "notes": [
+            "1,619 frames at 5.5 fr/min is 4h 54m of wall clock; at the 10.1 fr/min baseline it is 2h 40m.",
+            "Recovering the healthy pool alone does not save the review: render-07 must be drained so the scheduler stops requeueing onto it.",
+            "Three lighting artists are blocked on this pass from 08:00 and have no fallback task queued."
+          ],
+          "evidence": [
+            {
+              "claim": "SH042's lighting pass has 1,619 frames left to render.",
+              "tool": "query_prometheus",
+              "query": "sum(render_frames_remaining{shot=\"SH042\", department=\"lighting\"})",
+              "observed": "1619"
+            },
+            {
+              "claim": "Effective throughput has fallen by 46%.",
+              "tool": "query_prometheus",
+              "query": "sum(rate(render_frames_completed_total{shot=\"SH042\"}[15m])) * 60",
+              "observed": "5.5 frames/min now against a 10.1 frames/min pre-incident baseline."
+            }
+          ]
+        }
+      }
+    },
+
+    {
+      "after_ms": 600,
+      "event": {
+        "type": "verdict",
+        "severity": "critical",
+        "subject": "SH042 · LIGHTING PASS",
+        "metrics": [
+          {"label": "frames left", "value": "1,619"},
+          {"label": "throughput", "value": "5.5 fr/min", "was": "10.1"},
+          {"label": "ETA", "value": "Fri 16:18", "was": "Fri 13:40"},
+          {"label": "capacity", "value": "−46%"}
+        ],
+        "personas": {
+          "td": {
+            "headline": "render-07 GPU is throwing uncorrectable ECC — lighting capacity −46%",
+            "sub": "Xid 48 since 02:14, 138 frames failed exit 139 in 90m, all on one node. Peers clean. Scheduler is requeueing onto the fault.",
+            "action": "Drain render-07 from the lighting pool, requeue SH042 frames 1184–2803 to render-01/08/09, raise a hardware ticket on the GPU.",
+            "risk": "Draining costs 1 of 6 nodes; the remaining pool clears the backlog at 9.4 fr/min."
+          },
+          "supervisor": {
+            "headline": "SH042's lighting pass is 2h 18m behind, and one node is the cause",
+            "sub": "render-07 is failing every frame it is given. Nothing is wrong with the shot, the lighting setup, or the other five nodes.",
+            "action": "Approve draining render-07. SH042 then lands about 16 minutes before the review instead of 2h 18m after it.",
+            "risk": "No creative rework needed — no frame rendered on a healthy node has failed."
+          },
+          "producer": {
+            "headline": "SH042 misses Friday's 14:00 client review by 2h 18m",
+            "sub": "One faulty render machine. Three lighting artists idle from 08:00. Fixable now without overtime or a rescheduled review.",
+            "action": "Approve the fix and the review holds. Do nothing and the delivery lands at 16:18.",
+            "risk": "Cost of the fix: one machine offline for repair. Cost of waiting: the review slot."
+          }
+        }
+      }
+    },
+
+    {
+      "after_ms": 500,
+      "event": {
+        "type": "writeback_proposed",
+        "requires_approval": true,
+        "items": [
+          {
+            "id": "annotation",
+            "kind": "annotation",
+            "title": "Annotation on the render-farm timeline",
+            "detail": "render-07 GPU fault (Xid 48 / uncorrectable ECC) from 02:14 — SH042 lighting frames failing exit 139",
+            "target": "dashboard: Render Farm Overview",
+            "scope": "annotations:write"
+          },
+          {
+            "id": "dashboard",
+            "kind": "dashboard",
+            "title": "Incident dashboard “SH042 lighting slip”",
+            "detail": "Four panels: lighting queue depth, per-node frame failures, render-07 GPU temperature, SH042 frames remaining vs. deadline",
+            "target": "folder: Incidents",
+            "scope": "dashboards:write"
+          },
+          {
+            "id": "alert",
+            "kind": "alert_rule",
+            "title": "Alert rule: ECC errors > 0 for 5m",
+            "detail": "increase(render_node_ecc_errors_total[5m]) > 0, by node, so the next faulty GPU is caught before a shot slips",
+            "target": "folder: Render Farm",
+            "scope": "alert.rules:write"
+          }
+        ]
+      }
+    },
+
+    {
+      "after_ms": 300,
+      "event": {
+        "type": "run_done",
+        "total_tool_calls": 17,
+        "seconds": 129.5,
+        "stages_ok": 3
+      }
+    }
+  ]
+}
