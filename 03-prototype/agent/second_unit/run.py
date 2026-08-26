@@ -116,7 +116,12 @@ async def main(stages):
     # Self-observability. Best-effort by construction: if the push endpoint is missing or
     # failing, the run proceeds and simply is not measured.
     from .observe import RunObserver, observer_enabled
+    from .tracing import flush as flush_traces, setup_tracing
     import uuid
+
+    # ADK instruments itself with GenAI semantic conventions; this exports those spans to
+    # Grafana Cloud AI Observability. Best-effort: a tracing failure must not stop a run.
+    setup_tracing()
     obs = (RunObserver(uuid.uuid4().hex[:8], model=os.getenv("GEMINI_MODEL", ""))
            if observer_enabled() else None)
 
@@ -263,6 +268,7 @@ async def main(stages):
           f"{len(record.stages)} stages ---")
     if obs:
         obs.flush()
+    flush_traces()          # a short CLI process would otherwise exit before the batch ships
     return record
 
 

@@ -104,6 +104,74 @@ def forecast_delivery(
     }
 
 
+def forecast_after_remediation(
+    frames_remaining: int,
+    baseline_rate_frames_per_min: float,
+    nodes_on_the_pass: int,
+    nodes_to_drain: int,
+    review_deadline_iso: str,
+) -> dict:
+    """Does the pass make its review IF the faulty node is drained now?
+
+    The plan already says "drain render-07". The next question a producer asks is "so does
+    that fix it?", and answering it turns a recommendation into a decision with a number
+    attached. This is arithmetic, not judgement, so it lives here: capacity after the fix is
+    the healthy per-node rate times the nodes that remain.
+
+    Note this is deliberately CONSERVATIVE. It assumes the remaining nodes run at their
+    healthy rate and nothing else improves -- no requeue backlog clearing faster, no frame
+    times recovering beyond baseline. If the honest answer is "still misses", we would
+    rather say so than flatter the fix.
+
+    Args:
+        frames_remaining: Frames left in the pass.
+        baseline_rate_frames_per_min: The pass's healthy rate, all nodes working.
+        nodes_on_the_pass: How many render nodes are assigned to this pass.
+        nodes_to_drain: How many are being taken out of rotation (usually 1).
+        review_deadline_iso: The client review time, ISO 8601.
+
+    Returns:
+        eta_iso, slip_hours, makes_deadline, rate_after_fix, minutes_saved_vs_now.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    if nodes_on_the_pass <= 0 or nodes_to_drain >= nodes_on_the_pass:
+        return {
+            "error": "no capacity left after draining",
+            "detail": (f"{nodes_to_drain} of {nodes_on_the_pass} nodes would leave the pass "
+                       f"with nothing to render on"),
+            "makes_deadline": False,
+        }
+    if baseline_rate_frames_per_min <= 0:
+        return {"error": "baseline rate must be positive to model the fix"}
+
+    per_node = baseline_rate_frames_per_min / nodes_on_the_pass
+    rate_after = per_node * (nodes_on_the_pass - nodes_to_drain)
+    hours = frames_remaining / rate_after / 60.0
+
+    now = datetime.now(timezone.utc)
+    eta = now + timedelta(hours=hours)
+    try:
+        deadline = datetime.fromisoformat(review_deadline_iso)
+        if deadline.tzinfo is None:
+            deadline = deadline.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return {"error": f"could not parse review_deadline_iso: {review_deadline_iso!r}"}
+
+    slip = (eta - deadline).total_seconds() / 3600.0
+    return {
+        "rate_after_fix": round(rate_after, 2),
+        "eta_iso": eta.isoformat(timespec="minutes"),
+        "hours_remaining": round(hours, 2),
+        "slip_hours": round(slip, 2),
+        "makes_deadline": slip <= 0,
+        "margin_minutes": round(-slip * 60),
+        "nodes_after_fix": nodes_on_the_pass - nodes_to_drain,
+        "assumption": ("remaining nodes run at their healthy per-node rate; no other "
+                       "recovery assumed"),
+    }
+
+
 def idle_cost(artists_idle: int, slip_hours: float, hourly_rate_usd: float = 85.0) -> dict:
     """Convert a schedule slip into the number a producer actually argues about.
 

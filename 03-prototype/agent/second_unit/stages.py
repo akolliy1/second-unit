@@ -23,7 +23,7 @@ from .schemas import (
     WatchtowerReport,
     WriteResult,
 )
-from .tools import forecast_delivery, idle_cost
+from .tools import forecast_after_remediation, forecast_delivery, idle_cost
 
 FLASH = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 STRONG = os.getenv("GEMINI_MODEL_STRONG", "gemini-2.5-pro")
@@ -256,10 +256,22 @@ Given the Diagnosis and the Impact Forecast, propose:
    Names like `grafana_annotation_tool` or `grafana_dashboard_tool` DO NOT EXIST. Do not
    invent variants, and do not guess at a name for an action not in that list.
 3. `risk_if_ignored` — what happens if nobody acts, in production terms.
+4. **The counterfactual — do not skip this, it is the most useful thing you produce.**
+   Call `forecast_after_remediation` to work out whether the pass makes its review IF the
+   faulty node is drained right now. You are given the frames remaining, the healthy
+   baseline rate, and how many nodes are on the pass (seven are on the lighting pass unless
+   the diagnosis says otherwise; you are draining one). Put its numbers in `fix_outcome`,
+   `fix_eta_iso`, `fix_makes_deadline` and `fix_margin_minutes`.
+
+   Do NOT compute this yourself and do not soften it. If the tool says the pass still misses
+   after the fix, say that plainly — a producer who is told "the fix saves it" and then
+   misses the review anyway will never trust the system again. "Drain the node and it still
+   lands 40 minutes late, so also move the review" is a more useful sentence than a
+   comfortable one.
 
 Be honest about `reversible`. An operator deciding whether to approve is relying on it.
 """,
-        tools=[grafana_toolset(tool_filter=PLANNER_TOOLS)],
+        tools=[grafana_toolset(tool_filter=PLANNER_TOOLS), forecast_after_remediation],
         output_schema=RemediationPlan,
         output_key="remediation_plan",
     )

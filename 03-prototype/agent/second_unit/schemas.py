@@ -107,6 +107,17 @@ class RemediationPlan(BaseModel):
     fix_recommendation: str = Field(
         description="The real-world fix for the crew — not a Grafana change.")
     risk_if_ignored: str
+    # The counterfactual. Advice without a number is an opinion; advice with an ETA is a
+    # decision the producer can actually make.
+    fix_outcome: str = Field(
+        default="",
+        description="One sentence: if the fix is applied NOW, does the pass make its "
+                    "review, and by what margin? Quote forecast_after_remediation.")
+    fix_eta_iso: str = Field(default="", description="ETA after the fix, from the tool.")
+    fix_makes_deadline: bool = Field(
+        default=False, description="From forecast_after_remediation, not your judgement.")
+    fix_margin_minutes: int = Field(
+        default=0, description="Minutes inside (positive) or outside (negative) the review.")
 
 
 class WriteResult(BaseModel):

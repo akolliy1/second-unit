@@ -127,6 +127,12 @@ def writeback_event(plan: RemediationPlan) -> dict:
         "requires_approval": True,
         "fix_recommendation": plan.fix_recommendation,
         "risk_if_ignored": plan.risk_if_ignored,
+        # The counterfactual, computed by forecast_after_remediation rather than asserted.
+        # This is what turns "drain the node" from advice into a decision.
+        "fix_outcome": plan.fix_outcome,
+        "fix_eta": plan.fix_eta_iso,
+        "fix_makes_deadline": plan.fix_makes_deadline,
+        "fix_margin_minutes": plan.fix_margin_minutes,
         "items": [
             {
                 "id": f"item-{i}",

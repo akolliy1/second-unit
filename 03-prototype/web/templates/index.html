@@ -13,7 +13,7 @@
   Every zone has all four states in the markup and CSS switches between them, so an error
   is a designed state rather than a blank div.
 -->
-<html lang="en" data-persona="td">
+<html lang="en" data-persona="{{ initial_persona|default('td') }}" data-force-picker="{{ '1' if force_picker else '0' }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -156,6 +156,47 @@ a{color:var(--cyan)}
 .vnext div.risk{border-left-color:var(--amber)}
 .vnext .k{font-family:var(--mono);font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3);display:block;margin-bottom:.2rem}
 .vnext .t{display:block;font-size:.86rem;color:var(--ink2)}
+
+/* ---------------------------------------------------------------- picker
+   A "who's viewing?" screen, NOT authentication: no accounts, nothing to sign into.
+   It earns its place by stating the thesis before the agent runs — three people need the
+   same answer in three different languages.
+
+   Two hard rules, both protecting the hosted-URL judging gate:
+     - the console is already rendered BEHIND this overlay, so a judge who dismisses it
+       (or whose JS never runs) is looking at the finding, not a blank wall
+     - it is always skippable, and ?persona= bypasses it entirely
+*/
+.picker{
+  position:fixed; inset:0; z-index:50; display:none;
+  background:color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter:blur(6px) saturate(120%);
+  align-items:center; justify-content:center; padding:1.25rem;
+}
+html[data-picker="1"] .picker{display:flex}
+.picker-card{
+  width:min(46rem,100%); background:var(--panel); border:1px solid var(--line);
+  border-radius:14px; padding:1.75rem 1.5rem 1.25rem; box-shadow:0 24px 60px #0009;
+}
+.picker-card h2{font-size:1.35rem; letter-spacing:-.01em; margin-bottom:.35rem}
+.picker-card p.lede{color:var(--dim); font-size:.92rem; margin-bottom:1.25rem; max-width:44ch}
+.picker-grid{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.6rem}
+@media (max-width:640px){ .picker-grid{grid-template-columns:1fr} }
+.picker-grid button{
+  text-align:left; background:var(--bg); border:1px solid var(--line); border-radius:10px;
+  padding:.85rem .9rem; color:var(--ink); cursor:pointer; display:grid; gap:.25rem;
+}
+.picker-grid button:hover{border-color:var(--amber)}
+.picker-grid button:focus-visible{outline:2px solid var(--cyan); outline-offset:2px}
+.picker-grid .role{font-weight:650; font-size:.95rem}
+.picker-grid .who{color:var(--dim); font-size:.78rem; line-height:1.35}
+.picker-foot{display:flex; align-items:center; gap:.75rem; margin-top:1.1rem}
+.picker-foot button{
+  background:none; border:none; color:var(--dim); cursor:pointer; font-size:.85rem;
+  text-decoration:underline; text-underline-offset:3px; padding:.3rem 0;
+}
+.picker-foot button:hover{color:var(--ink)}
+.picker-foot small{color:var(--dim); font-size:.75rem; margin-left:auto}
 
 /* per-persona: exactly one framing visible, and it works before JS runs */
 .frame{display:none}
@@ -302,15 +343,46 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
 <body>
 <a class="sr" href="#verdict">Skip to the verdict</a>
 
+<!-- Persona chooser. Rendered after the console so the finding is already on the page
+     underneath; see the .picker comment in the stylesheet for why that matters. -->
+<div class="picker" id="picker" role="dialog" aria-modal="true" aria-labelledby="pickerTitle">
+  <div class="picker-card">
+    <h2 id="pickerTitle">Who's looking at the farm?</h2>
+    <p class="lede">Same investigation, same evidence — reported in the language of whoever
+      has to act on it. You can switch at any time.</p>
+    <div class="picker-grid">
+      <button type="button" data-pick="td">
+        <span class="role">Pipeline TD</span>
+        <span class="who">The engineer who keeps the farm running. Nodes, PromQL, log lines.</span>
+      </button>
+      <button type="button" data-pick="supervisor">
+        <span class="role">VFX Supervisor</span>
+        <span class="who">Accountable for the shots. Which one is late, why, and the fix.</span>
+      </button>
+      <button type="button" data-pick="producer">
+        <span class="role">Producer</span>
+        <span class="who">Owns the schedule. Does this make the review, and who is idle.</span>
+      </button>
+    </div>
+    <div class="picker-foot">
+      <button type="button" id="pickSkip">Just show me the incident</button>
+      <small>No account, nothing to sign in to.</small>
+    </div>
+  </div>
+</div>
+
 <header class="topbar"><div class="wrap topbar-in">
   <div class="brand">SECOND <b>UNIT</b><small>render farm · second unit</small></div>
   <div class="spacer"></div>
   <!-- The persona toggle is the whole thesis in one control: one investigation, three
        framings. It is read-only and client-side — explicitly NOT an auth boundary. -->
   <div class="personas" role="tablist" aria-label="Frame the finding for">
-    <button type="button" role="tab" data-persona="td" aria-selected="true">TD</button>
-    <button type="button" role="tab" data-persona="supervisor" aria-selected="false">Supervisor</button>
-    <button type="button" role="tab" data-persona="producer" aria-selected="false">Producer</button>
+    <button type="button" role="tab" data-persona="td"
+      aria-selected="{{ 'true' if initial_persona|default('td') == 'td' else 'false' }}">TD</button>
+    <button type="button" role="tab" data-persona="supervisor"
+      aria-selected="{{ 'true' if initial_persona|default('td') == 'supervisor' else 'false' }}">Supervisor</button>
+    <button type="button" role="tab" data-persona="producer"
+      aria-selected="{{ 'true' if initial_persona|default('td') == 'producer' else 'false' }}">Producer</button>
   </div>
   <div class="freshness"><span class="dot live" id="dot"></span><span id="statusText">recorded run</span></div>
 </div></header>
@@ -531,7 +603,73 @@ function setQueries(show) {
   $("btnEvToggle").textContent = show ? "Hide queries" : "Show queries";
 }
 document.querySelectorAll(".personas button").forEach((b) =>
-  b.addEventListener("click", () => applyPersona(b.dataset.persona)));
+  b.addEventListener("click", () => { applyPersona(b.dataset.persona); rememberPersona(b.dataset.persona); }));
+
+/* ---- the persona chooser -------------------------------------------------
+   Shown when we have no idea who is looking: first visit, or an explicit /start.
+   NEVER shown when ?persona= says who they are, because that is a deliberate link.
+   Every localStorage access is wrapped: private windows and blocked site data throw on
+   access, and a chooser that crashes the page would be worse than no chooser. */
+const PICKER_KEY = "second-unit:persona";
+const PERSONAS = ["td", "supervisor", "producer"];
+function storedPersona() {
+  try {
+    const v = localStorage.getItem(PICKER_KEY);
+    return PERSONAS.includes(v) ? v : null;
+  } catch (_) { return null; }
+}
+/* THE single source of truth for "whose framing is this?".
+   A deliberate ?persona= link wins; then a remembered choice; then the server-rendered
+   default. boot() and the picker both call this — the first version had boot() making its
+   own decision (`?persona= || "td"`), which silently overwrote a remembered producer with
+   td on every return visit. One resolver, one answer. */
+function resolvePersona() {
+  const asked = new URLSearchParams(location.search).get("persona");
+  if (PERSONAS.includes(asked)) return asked;
+  const known = storedPersona();
+  if (known) return known;
+  const server = document.documentElement.dataset.persona;
+  return PERSONAS.includes(server) ? server : "td";
+}
+function rememberPersona(p) {
+  try { localStorage.setItem(PICKER_KEY, p); } catch (_) { /* nothing to do */ }
+}
+function closePicker() { document.documentElement.dataset.picker = "0"; }
+
+(function initPersona() {
+  const asked = new URLSearchParams(location.search).get("persona");
+  const forced = document.documentElement.dataset.forcePicker === "1";
+  const known = storedPersona();
+
+  applyPersona(resolvePersona());
+  // Show the chooser only when we genuinely do not know who is looking: an explicit
+  // /start, or a first visit with no remembered choice and no deliberate link.
+  const skipped = (() => {
+    try { return sessionStorage.getItem(PICKER_KEY + ":skipped") === "1"; }
+    catch (_) { return false; }
+  })();
+  if (forced || (!asked && !known && !skipped)) {
+    document.documentElement.dataset.picker = "1";
+  } else {
+    closePicker();
+  }
+})();
+
+document.querySelectorAll(".picker-grid button").forEach((b) =>
+  b.addEventListener("click", () => {
+    applyPersona(b.dataset.pick);
+    rememberPersona(b.dataset.pick);
+    closePicker();
+  }));
+$("pickSkip").addEventListener("click", () => {
+  /* Deliberately does NOT remember a choice: skipping is "leave me alone now", not
+     "I am a TD forever". It does stop the overlay reappearing this session. */
+  try { sessionStorage.setItem(PICKER_KEY + ":skipped", "1"); } catch (_) {}
+  closePicker();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && document.documentElement.dataset.picker === "1") closePicker();
+});
 $("btnEvToggle").addEventListener("click", () =>
   setQueries($("evZone").classList.contains("hide-queries")));
 
@@ -953,7 +1091,7 @@ function hydrateRecorded() {
 
 (function boot() {
   const demo = new URLSearchParams(location.search).get("demo");
-  applyPersona(new URLSearchParams(location.search).get("persona") || "td");
+  applyPersona(resolvePersona());   // NOT `?persona= || "td"` — see resolvePersona
 
   if (demo === "empty") {
     ["verdictZone", "stagesZone", "evZone", "wbZone"].forEach((z) => zone(z, "empty"));

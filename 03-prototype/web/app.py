@@ -81,6 +81,20 @@ class Run:
     live: bool = False          # run the real pipeline instead of replaying the recording
 
 
+# Export ADK's own GenAI spans to Grafana Cloud AI Observability. Done at import so every
+# request path is traced, and guarded so a missing credential cannot stop the service.
+try:
+    import sys as _sys
+    from pathlib import Path as _Path
+    _agent = _Path(__file__).resolve().parent.parent / "agent"
+    if _agent.is_dir() and str(_agent) not in _sys.path:
+        _sys.path.insert(0, str(_agent))
+    from second_unit.tracing import setup_tracing as _setup_tracing
+    _setup_tracing(service_name="second-unit-web")
+except Exception:  # noqa: BLE001
+    pass
+
+
 RUNS: Dict[str, Run] = {}
 
 
@@ -226,6 +240,7 @@ async def _iter_events(run: Run, request: Request) -> AsyncIterator[str]:
 # --------------------------------------------------------------------------- routes
 
 
+@app.get("/start", response_class=HTMLResponse)
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request) -> HTMLResponse:
     fixture = load_fixture()
@@ -241,6 +256,19 @@ async def index(request: Request) -> HTMLResponse:
         context={
             "scenario": fixture.get("scenario", {}),
             "verdict": verdict,
+            # /start always shows the persona chooser; / shows it only on a first visit
+            # (the client decides from localStorage). Either way the console is rendered
+            # underneath, so the overlay never stands between a judge and the finding.
+            "force_picker": request.url.path == "/start",
+            # Render the requested framing SERVER-SIDE. Letting JS fix it after paint
+            # means a ?persona=producer link flashes the TD framing first, and shows the
+            # wrong one entirely if scripts are slow or blocked — on the one screen a judge
+            # is guaranteed to read.
+            "initial_persona": (
+                request.query_params.get("persona")
+                if request.query_params.get("persona") in ("td", "supervisor", "producer")
+                else "td"
+            ),
             # The recorded run is embedded in the page rather than fetched: it means a
             # judge landing on the URL sees a complete finding on first paint with no
             # second round trip, and the page stays coherent if the API is unreachable.
