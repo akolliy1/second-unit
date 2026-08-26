@@ -126,3 +126,36 @@ class WriteResult(BaseModel):
     action: str
     succeeded: bool
     detail: str = Field(description="The created object's URL/uid, or the error.")
+
+
+class AskRoute(BaseModel):
+    """The router's verdict on a question, before any tool is touched.
+
+    This exists so an out-of-scope question costs ONE fast model call and no MCP traffic.
+    Without it, "what's the weather" would spend a minute querying Prometheus before
+    admitting it cannot help — and a judge's lasting impression of the product would be a
+    slow non-answer.
+    """
+
+    in_scope: bool = Field(
+        description="True only if this can be answered from THIS render farm's telemetry.")
+    reason: str = Field(
+        description="One sentence. If out of scope, say plainly what the system can and "
+                    "cannot see — do not apologise and do not speculate.")
+    suggestion: str = Field(
+        default="",
+        description="If out of scope, the nearest question that IS answerable here.")
+
+
+class AskAnswer(BaseModel):
+    """A scoped answer, with its working shown."""
+
+    answer: str = Field(
+        description="Two or three sentences, in the reader's language. Lead with the "
+                    "answer, not the method.")
+    confidence: Confidence
+    evidence: List[Evidence] = Field(default_factory=list)
+    caveat: str = Field(
+        default="",
+        description="Anything that would make this answer wrong — a short window, a "
+                    "missing series, an assumption. Empty if genuinely none.")

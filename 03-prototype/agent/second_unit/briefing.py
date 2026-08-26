@@ -98,6 +98,8 @@ def _minutes(hours: float) -> str:
 
 def compose(forecast, diagnosis, plan=None, *, shot: Optional[str] = None) -> str:
     """Build the spoken script from the typed stage outputs."""
+    # An explicit subject wins: the console may be asking about a specific pass, and the
+    # briefing must name the one the operator selected.
     shot = shot or forecast.shot
     late = not forecast.makes_deadline
     lines = []

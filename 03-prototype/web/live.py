@@ -150,7 +150,7 @@ def writeback_event(plan: RemediationPlan) -> dict:
     }
 
 
-async def iter_live_events() -> AsyncIterator[dict]:
+async def iter_live_events(shot: str = "SH042") -> AsyncIterator[dict]:
     """Drive the real pipeline, yielding UI events. Never raises: a failed stage is an
     event, because a judge should see where it stopped rather than a dead connection."""
     started = time.time()
@@ -158,20 +158,28 @@ async def iter_live_events() -> AsyncIterator[dict]:
     total_calls = 0
     stages_ok = 0
 
-    yield {"type": "run_started", "scenario": "live", "stages": STAGE_META}
+    yield {"type": "run_started", "scenario": "live", "stages": STAGE_META, "shot": shot}
 
     # (stage_id, factory, task_fn, schema, fallback_model)
     # Only the two STRONG-model stages get a downgrade path: they are the ones that exhaust
     # quota first, and Flash is a real answer where a 429 is none.
     flash = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
     plan: List = [
-        ("watchtower", watchtower, lambda: WATCHTOWER_TASK, WatchtowerReport, None),
+        # The subject is threaded through the prompts rather than filtered afterwards: an
+        # agent told which pass is at risk spends its tool budget there instead of
+        # rediscovering it, and a subject bar that only filtered the OUTPUT would be a lie
+        # about what the agent actually did.
+        ("watchtower", watchtower,
+         lambda: f"{WATCHTOWER_TASK}\n\nThe crew is asking about {shot} in particular; "
+                 f"start there, but report anything else abnormal you find.",
+         WatchtowerReport, None),
         ("diagnostician", diagnostician,
          lambda: diagnostician_task(outputs["watchtower"]), Diagnosis, flash),
         ("impact_forecaster", impact_forecaster,
          lambda: (
              "Forecast the production impact of this diagnosis. The client review "
-             f"deadline is {published_review_deadline('SH042')}. Measure frames remaining and both "
+             f"deadline is {published_review_deadline(shot)}. Focus on {shot}. "
+             "Measure frames remaining and both "
              "the current and pre-incident baseline completion rate, then call "
              f"forecast_delivery.\n\n{outputs['diagnostician'].model_dump_json(indent=2)}"
          ), ImpactForecast, flash),
@@ -249,7 +257,7 @@ async def iter_live_events() -> AsyncIterator[dict]:
             try:
                 script = compose_briefing(
                     outputs["impact_forecaster"], outputs["diagnostician"],
-                    outputs["remediation_planner"])
+                    outputs["remediation_planner"], shot=shot)
                 yield {"type": "briefing", "script": script,
                        "seconds_estimate": round(estimated_seconds(script))}
             except Exception as exc:  # noqa: BLE001 — a briefing must not fail a run

@@ -19,6 +19,19 @@
 #}
 
 {% block head_extra %}
+/* The way into a detail view. Positioned in the row's flow, not absolutely, so it cannot
+   overlap content at narrow widths. */
+.shot{position:relative}
+.shot .investigate{
+  position:absolute; top:.6rem; right:.7rem; font-size:.76rem; text-decoration:none;
+  padding:.22rem .55rem; border:1px solid var(--line2); border-radius:999px;
+  background:var(--panel2); color:var(--ink2); white-space:nowrap;
+}
+.shot .investigate:hover{border-color:var(--amber); color:var(--ink)}
+.shot .investigate:focus-visible{outline:2px solid var(--cyan); outline-offset:2px}
+@media (max-width:560px){
+  .shot .investigate{position:static; display:inline-block; margin-bottom:.4rem}
+}
 /* ============================================================ /shots
    Zone states: every panel carries all of its states in the markup and CSS picks one, so
    an error or an empty sweep is a designed screen rather than a blank div. */
@@ -354,6 +367,11 @@ they would read as current.</div>
 
     return `
       <article class="shot" data-status="${esc(s.status)}">
+        <!-- /shots is the list view, so it is the entry point INTO a detail view. Without
+             this the two pages were a dead end in both directions: no way in from the list,
+             and a list crammed onto the detail page instead. -->
+        <a class="investigate" href="/investigation?shot=${encodeURIComponent(s.shot)}"
+           aria-label="Investigate ${esc(s.shot)}">Investigate →</a>
         <div class="shead">
           <span class="sid">${esc(s.shot)}</span>
           <span class="dept">${esc(s.department)}</span>

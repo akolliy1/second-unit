@@ -11,7 +11,15 @@
   --r:10px;
 }
 *{box-sizing:border-box}
-html,body{margin:0;padding:0;overflow-x:hidden}
+/* NO `overflow-x:hidden` here.
+   It was inherited from the single-page version, and on the multi-page layout it silently
+   broke everything: `overflow-x:hidden` makes html/body a scroll container, so
+   `position:sticky` on the nav rail and the docs drawer has nothing to stick to. Both
+   scrolled away with the page — the rail's links went off-screen and only its footer was
+   left visible, which reads as a broken layout.
+   Horizontal overflow is contained where it actually originates instead: wide code, tables
+   and bars each carry their own `overflow-x:auto`. */
+html,body{margin:0;padding:0}
 body{
   background:
     radial-gradient(1200px 600px at 50% -10%, #131a24 0%, transparent 60%),

@@ -54,6 +54,12 @@ MAX_RUNS = 32
 
 app = FastAPI(title="Second Unit", docs_url=None, redoc_url=None)
 templates = Jinja2Templates(directory=str(HERE / "templates"))
+# `{% extends %}` on a child template's first line renders to an empty line, so every
+# response began with a newline before <!doctype html>. Browsers tolerate it — we measured
+# CSS1Compat — but it is one stray character away from quirks mode, and quirks mode is a
+# whole class of layout bugs nobody should be debugging on submission day.
+templates.env.trim_blocks = True
+templates.env.lstrip_blocks = True
 
 
 # --------------------------------------------------------------------------- fixture
@@ -84,6 +90,7 @@ class Run:
     approved_items: List[str] = field(default_factory=list)
     writeback_ids: List[str] = field(default_factory=list)
     live: bool = False          # run the real pipeline instead of replaying the recording
+    shot: str = "SH042"         # which pass this run is about
     briefing_script: str = ""   # the spoken dailies script, composed by the pipeline
     briefing_mp3: Optional[bytes] = None    # synthesized lazily, then cached per run
 
@@ -172,7 +179,7 @@ async def _iter_live(run: Run, request: Request) -> AsyncIterator[str]:
         #
         # Wrapping __anext__ in wait_for lets us emit an SSE comment during the gaps
         # without touching the pipeline itself.
-        events = iter_live_events().__aiter__()
+        events = iter_live_events(shot=run.shot).__aiter__()
         while True:
             try:
                 event = await asyncio.wait_for(events.__anext__(), timeout=10)
@@ -345,6 +352,12 @@ async def investigation(request: Request) -> HTMLResponse:
         context={
             **_chrome(request, "investigation", "Investigation",
                       "Five stages, live tool calls, and an approval gate before anything is written"),
+            # The subject of this page. The recorded run is SH042; if a judge deep-links a
+            # different shot we say so rather than silently showing the wrong pass.
+            "subject_shot": ((request.query_params.get("shot") or "SH042").upper()
+                             if (request.query_params.get("shot") or "SH042").upper()
+                             in ("SH041", "SH042", "SH043") else "SH042"),
+            "recorded_shot": "SH042",
             "scenario": fixture.get("scenario", {}),
             "verdict": verdict,
             # /start always shows the persona chooser; / shows it only on a first visit
@@ -414,6 +427,9 @@ async def start_run(request: Request) -> JSONResponse:
     )
     run = Run(id=uuid.uuid4().hex[:12], inject=inject)
     run.live = want_live and not inject
+    asked_shot = (request.query_params.get("shot") or "").upper()
+    if asked_shot in ("SH041", "SH042", "SH043"):
+        run.shot = asked_shot
 
     # The page hydrates from the recorded run on load, without streaming. That run really
     # did happen, so its write-back proposal is genuinely approvable — this registers it
@@ -658,7 +674,12 @@ async def api_agent_metrics() -> JSONResponse:
     #: is a different and much worse claim than "no run recently". `last_over_time` asks the
     #: right question: what did the most recent run report? Same mistake we made with the
     #: farm metrics; see telemetry/README.md.
-    WINDOW = os.environ.get("AGENT_METRICS_WINDOW", "6h")
+    #: 6h was still too tight — the last run aged out of it within an afternoon and the
+    #: page went blank again. These series are written once per run, so the window is really
+    #: "how long ago will we still tell you about", and for a demo a judge might open a day
+    #: later the answer is 24h. The response carries the window so the page can say how old
+    #: the numbers are rather than implying they are current.
+    WINDOW = os.environ.get("AGENT_METRICS_WINDOW", "24h")
 
     def series(metric: str):
         try:
@@ -679,6 +700,114 @@ async def api_agent_metrics() -> JSONResponse:
         "write_claims": series("second_unit_write_claims_total"),
         "grafana_url": os.environ.get("GRAFANA_URL", ""),
     })
+
+
+@app.get("/api/ask/suggestions")
+async def ask_suggestions() -> JSONResponse:
+    """The chips. Every one is answerable from this farm's telemetry and exercises a
+    different capability, so the demo path cannot land on a dud."""
+    try:
+        from second_unit.ask import SUGGESTED
+        return JSONResponse({"suggestions": SUGGESTED})
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"suggestions": [], "error": str(exc)[:200]}, status_code=503)
+
+
+@app.get("/api/ask/stream")
+async def ask_stream(request: Request) -> StreamingResponse:
+    """Answer one scoped question, streaming the work.
+
+    Stateless on purpose — a question is not a run, so there is nothing to register or
+    resume. The router goes first: an out-of-scope question returns in a few seconds with an
+    honest reason and never touches a tool, which is the whole reason this is a scoped ask
+    box rather than a chat window.
+    """
+    question = (request.query_params.get("q") or "").strip()[:400]
+    asked_shot = (request.query_params.get("shot") or "SH042").upper()
+    if asked_shot not in ("SH041", "SH042", "SH043"):
+        asked_shot = "SH042"
+
+    async def gen():
+        if not question:
+            yield _sse({"type": "ask_failed", "error": "empty question"})
+            return
+        try:
+            from second_unit.ask import (
+                answer_task, answerer, route_task, router,
+            )
+            from second_unit.pipeline import stream_stage
+            from second_unit.schemas import AskAnswer, AskRoute
+        except Exception as exc:  # noqa: BLE001
+            yield _sse({"type": "ask_failed",
+                        "error": f"ask unavailable: {type(exc).__name__}: {exc}"})
+            return
+
+        yield _sse({"type": "ask_routing", "question": question})
+        route = None
+        try:
+            async for kind, payload in stream_stage(
+                router(), route_task(question), AskRoute, verbose=False
+            ):
+                if kind == "result":
+                    route = payload
+        except Exception as exc:  # noqa: BLE001
+            yield _sse({"type": "ask_failed", "error": f"{type(exc).__name__}: {exc}"})
+            return
+
+        if route is None or not route.ok:
+            yield _sse({"type": "ask_failed",
+                        "error": (route.error if route else "router returned nothing"),
+                        "hint": "The scope check itself failed, so no answer was attempted."})
+            return
+
+        r = route.output
+        if not r.in_scope:
+            # No tools, no waiting. This is the case a chat window handles badly.
+            yield _sse({"type": "ask_rejected", "reason": r.reason,
+                        "suggestion": r.suggestion})
+            return
+
+        yield _sse({"type": "ask_accepted", "reason": r.reason})
+        answer = None
+        try:
+            async for kind, payload in stream_stage(
+                answerer(), answer_task(question, shot=asked_shot), AskAnswer,
+                verbose=False
+            ):
+                if kind == "result":
+                    answer = payload
+                elif kind == "tool_done":
+                    yield _sse(payload)
+                if await request.is_disconnected():
+                    return
+        except Exception as exc:  # noqa: BLE001
+            yield _sse({"type": "ask_failed", "error": f"{type(exc).__name__}: {exc}"})
+            return
+
+        if answer is None or not answer.ok:
+            err = answer.error if answer else "no answer"
+            quota = any(k in (err or "").lower() for k in ("resource_exhausted", "429", "quota"))
+            yield _sse({"type": "ask_failed", "error": err,
+                        "reason": "quota" if quota else "answer_error",
+                        "hint": ("The model is rate limited right now."
+                                 if quota else "The answering stage returned nothing usable.")})
+            return
+
+        a = answer.output
+        yield _sse({
+            "type": "ask_answer",
+            "answer": a.answer,
+            "confidence": a.confidence.value,
+            "caveat": a.caveat,
+            "evidence": [
+                {"claim": e.claim, "tool": e.tool, "query": e.query, "observed": e.observed}
+                for e in a.evidence
+            ],
+        })
+
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache",
+                                      "X-Accel-Buffering": "no"})
 
 
 @app.post("/api/reset")

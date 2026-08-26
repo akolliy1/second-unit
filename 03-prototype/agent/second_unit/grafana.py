@@ -106,3 +106,14 @@ EXECUTOR_TOOLS = [
     "get_dashboard_by_uid",
     "get_dashboard_summary",
 ]
+
+
+# The ask feature's tool budget. Narrow on purpose: a question box with 76 tools behind it
+# is an invitation to wander, and the failure mode of wandering is a slow wrong answer.
+ASK_TOOLS = [
+    "list_datasources",
+    "list_prometheus_metric_names",
+    "query_prometheus",
+    "query_loki_logs",
+    "list_loki_label_values",
+]

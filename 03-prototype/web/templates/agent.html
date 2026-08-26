@@ -19,6 +19,23 @@
 #}
 
 {% block head_extra %}
+/* Persona translation on this page too. It was missing, and this is the page a producer is
+   least equipped to read raw: token counts and tool latencies mean nothing to someone whose
+   question is "can I act on what this thing told me?". So the same data gets a plain-language
+   verdict for them, and the machinery is hidden by default rather than removed — the numbers
+   are still one click away, and the TD still lands on them directly. */
+.plain{display:none; margin:0 0 1.1rem}
+html[data-persona="producer"] .plain,
+html[data-persona="supervisor"] .plain{display:block}
+html[data-persona="producer"] .machinery{display:none}
+.plain .card{border-left:3px solid var(--amber)}
+.plain h3{margin:0 0 .4rem; font-size:1.05rem; letter-spacing:-.01em}
+.plain p{color:var(--ink2); margin:0 0 .5rem; max-width:62ch}
+.plain .verdictline{font-size:1.15rem; font-weight:650; color:var(--ink); margin-bottom:.5rem}
+.plain button.reveal{
+  font:inherit; font-size:.78rem; background:none; border:none; color:var(--cyan);
+  text-decoration:underline; text-underline-offset:3px; cursor:pointer; padding:0;
+}
 /* ============================================================ /agent */
 .zone > .st{display:none}
 .zone[data-state="loading"] > .st-loading,
@@ -132,11 +149,20 @@
 {% endblock %}
 
 {% block content %}
+<!-- The plain-language answer, for whoever did not come here to read latency bars. -->
+<section class="plain sect" id="plainAgent">
+  <div class="card">
+    <h3>Can you act on what this told you?</h3>
+    <p class="verdictline" id="plainVerdict">Checking the agent's record…</p>
+    <p id="plainDetail"></p>
+    <button class="reveal" id="plainReveal">Show the underlying numbers</button>
+  </div>
+</section>
 
 <!-- ====================================================== 1. WRITE CLAIMS
      The headline. Everything else on this page is cost accounting; this is the honesty
      accounting, and it is the reason the page exists. -->
-<section class="sect">
+<section class="sect machinery">
   <h2>Write-claim verification · the agent's self-report, checked</h2>
   <div class="zone" id="claimZone" data-state="loading">
 
@@ -180,7 +206,7 @@
 </section>
 
 <!-- ====================================================== 2. PER-STAGE COST -->
-<section class="sect">
+<section class="sect machinery">
   <h2>Per-stage cost · where an investigation's time and tokens go</h2>
   <div class="card">
     <div class="zone" id="costZone" data-state="loading">
@@ -208,7 +234,7 @@
 </section>
 
 <!-- ====================================================== 3. TOOL LATENCY -->
-<section class="sect">
+<section class="sect machinery">
   <h2>Tool latency · slowest first</h2>
   <div class="card">
     <div class="zone" id="latZone" data-state="loading">
@@ -233,7 +259,7 @@
 </section>
 
 <!-- ====================================================== 4. FAILURES -->
-<section class="sect">
+<section class="sect machinery">
   <h2>Stage failures · bucketed reasons</h2>
   <div class="card">
     <div class="zone" id="failZone" data-state="loading">
@@ -256,7 +282,7 @@
 </section>
 
 <!-- ====================================================== 5. GRAFANA -->
-<section class="sect">
+<section class="sect machinery">
   <h2>The same numbers, in Grafana</h2>
   <div class="card">
     <p style="margin:0 0 .6rem;font-size:.86rem;color:var(--ink2)">
@@ -358,6 +384,51 @@ the strong model is also the first to hit a quota, and a degraded-but-answering 
 {% endblock %}
 
 {% block scripts %}
+<script>
+/* Populated from the same /api/agent/metrics payload the machinery below uses, so the two
+   can never disagree. Deliberately blunt: the interesting answer here is either "yes, and
+   here is how we know" or "no — it claimed writes that were not there". */
+(function plainAgentView(){
+  function say(verdict, detail){
+    const v = document.getElementById("plainVerdict");
+    const d = document.getElementById("plainDetail");
+    if (v) v.textContent = verdict;
+    if (d) d.textContent = detail;
+  }
+  document.getElementById("plainReveal")?.addEventListener("click", () => {
+    document.querySelectorAll(".machinery").forEach((m) => m.style.display = "block");
+    document.getElementById("plainReveal").style.display = "none";
+  });
+  fetch("/api/agent/metrics").then((r) => r.json()).then((d) => {
+    const by = {};
+    (d.write_claims || []).forEach((x) => by[x.labels.outcome] = x.value);
+    const fs = by.false_success || 0, ok = by.confirmed || 0;
+    const hf = by.honest_failure || 0;
+    const claims = ok + fs + hf + (by.unchecked || 0);
+    const calls = (d.tool_calls || []).reduce((a, x) => a + x.value, 0);
+    if (!claims && !calls) {
+      say("No recent run to judge.",
+          "The agent has not run inside the last " + (d.window || "6h") + ", so there is " +
+          "nothing to check. That is different from a clean record.");
+      return;
+    }
+    if (fs > 0) {
+      say("Not entirely — " + fs + " of its write claims did not hold up.",
+          "The agent reported " + fs + " change" + (fs > 1 ? "s" : "") + " to Grafana that " +
+          "an independent check could not find. " + ok + " did hold up and " + hf +
+          " were honest failures it reported correctly. This is exactly why nothing is " +
+          "written without your approval, and why every write is checked afterwards " +
+          "through a different channel than the one the agent used.");
+    } else {
+      say("Yes — every write it claimed was verified.",
+          ok + " claimed change" + (ok === 1 ? "" : "s") + " confirmed in the stack, " + hf +
+          " failure" + (hf === 1 ? "" : "s") + " it reported honestly, and no claim that " +
+          "could not be found. Across the run it made " + calls + " calls to Grafana.");
+    }
+  }).catch(() => say("Could not read the agent's record.",
+      "The metrics endpoint did not respond, so this page cannot vouch for anything."));
+})();
+</script>
 <script>
 /* /agent — read the agent's own series and render them with divs.
    No charting library: strict CSP, no external requests, no build step. Bars are one div

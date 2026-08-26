@@ -110,6 +110,7 @@ def forecast_after_remediation(
     nodes_on_the_pass: int,
     nodes_to_drain: int,
     review_deadline_iso: str,
+    current_rate_frames_per_min: float = 0.0,
 ) -> dict:
     """Does the pass make its review IF the faulty node is drained now?
 
@@ -125,10 +126,13 @@ def forecast_after_remediation(
 
     Args:
         frames_remaining: Frames left in the pass.
-        baseline_rate_frames_per_min: The pass's healthy rate, all nodes working.
+        baseline_rate_frames_per_min: The pass's HEALTHY rate, all nodes working. This must
+            be the pre-incident rate, NOT the rate you can measure right now.
         nodes_on_the_pass: How many render nodes are assigned to this pass.
         nodes_to_drain: How many are being taken out of rotation (usually 1).
         review_deadline_iso: The client review time, ISO 8601.
+        current_rate_frames_per_min: The rate measured NOW, while degraded. Pass it and the
+            function can catch the mistake below; omit it and it cannot.
 
     Returns:
         eta_iso, slip_hours, makes_deadline, rate_after_fix, minutes_saved_vs_now.
@@ -144,6 +148,27 @@ def forecast_after_remediation(
         }
     if baseline_rate_frames_per_min <= 0:
         return {"error": "baseline rate must be positive to model the fix"}
+
+    # The mistake this catches, observed for real: asked "what if we drain render-07?", the
+    # agent had no healthy baseline to hand, substituted the CURRENT degraded rate, and the
+    # function dutifully reported that draining a dead node would make delivery slightly
+    # WORSE. That is arithmetically consistent and physically impossible, and it is exactly
+    # the class of answer this project exists to refuse.
+    if (current_rate_frames_per_min > 0
+            and baseline_rate_frames_per_min <= current_rate_frames_per_min * 1.05):
+        return {
+            "error": "baseline_is_not_a_baseline",
+            "detail": (
+                f"a healthy baseline of {baseline_rate_frames_per_min:.1f}/min is not "
+                f"credibly above the degraded rate of {current_rate_frames_per_min:.1f}/min. "
+                f"You have almost certainly passed the CURRENT rate as the baseline."),
+            "recommendation": (
+                "Measure the healthy rate over a window BEFORE the fault began, or use the "
+                "pre-incident baseline supplied in your context. Do not model a fix against "
+                "the broken farm's own throughput — the result is that removing a dead node "
+                "appears to reduce capacity, which is impossible."),
+            "makes_deadline": None,
+        }
 
     per_node = baseline_rate_frames_per_min / nodes_on_the_pass
     rate_after = per_node * (nodes_on_the_pass - nodes_to_drain)

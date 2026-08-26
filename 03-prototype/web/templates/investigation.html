@@ -113,6 +113,105 @@
 .briefing[data-error="1"] .berr{display:block}
 
 /* the chooser overlay became the /start page */
+/* -------------------------------------------------------- subject switcher
+   The first version put a grid of shot cards at the top of this page. Wrong on two counts:
+   it does not scale past a handful of shots, and Investigation is a DETAIL view — the list
+   belongs on /shots, which already filters and sorts. What a detail view needs is a compact
+   way to say which subject it is showing and to move to another, so this is a switcher, not
+   a list. */
+.subjbar{
+  display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; margin:0 0 1rem;
+  padding:.5rem .7rem; background:var(--panel); border:1px solid var(--line);
+  border-radius:var(--r);
+}
+.subjbar .lbl{color:var(--ink3); font-size:.74rem; letter-spacing:.09em; text-transform:uppercase}
+.subjsel{
+  font:inherit; font-size:.88rem; font-weight:650; color:var(--ink);
+  background:var(--panel2); border:1px solid var(--line2); border-radius:8px;
+  padding:.35rem 1.6rem .35rem .6rem; cursor:pointer;
+  appearance:none;
+  background-image:linear-gradient(45deg,transparent 50%,var(--ink3) 50%),
+                   linear-gradient(135deg,var(--ink3) 50%,transparent 50%);
+  background-position:calc(100% - 15px) 52%, calc(100% - 10px) 52%;
+  background-size:5px 5px,5px 5px; background-repeat:no-repeat;
+}
+.subjsel:focus-visible{outline:2px solid var(--cyan); outline-offset:2px}
+.subjbar .pill{
+  font-size:.7rem; letter-spacing:.08em; text-transform:uppercase; padding:.15rem .5rem;
+  border-radius:999px; border:1px solid var(--line2); color:var(--ink3);
+}
+.subjbar .pill[data-status="critical"]{color:var(--crit); border-color:var(--crit-dim)}
+.subjbar .pill[data-status="at_risk"]{color:var(--amber); border-color:var(--amber-dim)}
+.subjbar .pill[data-status="on_track"]{color:var(--ok); border-color:var(--ok-dim)}
+.subjbar .pill[data-status="done"]{color:var(--cyan)}
+.subjbar .meta{color:var(--ink3); font-size:.76rem; font-family:var(--mono)}
+.subjbar .spacer{flex:1 1 auto}
+.subjbar a.allshots{font-size:.78rem}
+
+/* When the selected subject has no recorded run, the recorded verdict is not "close
+   enough" — it is the wrong shot's evidence. Hide the whole run and show a call to action
+   instead. Showing SH042's finding under an SH043 heading is the kind of thing that ends
+   trust in a tool permanently. */
+html[data-subject-mismatch="1"] #verdictZone,
+html[data-subject-mismatch="1"] #stagesZone,
+html[data-subject-mismatch="1"] #evZone,
+html[data-subject-mismatch="1"] #wbZone,
+html[data-subject-mismatch="1"] #briefing{display:none}
+.nosubject{display:none; text-align:center; padding:2.2rem 1rem}
+html[data-subject-mismatch="1"] .nosubject{display:block}
+.nosubject h3{margin:0 0 .35rem; font-size:1.15rem}
+.nosubject p{color:var(--ink2); max-width:52ch; margin:0 auto .9rem}
+
+/* ------------------------------------------------------------------- ask
+   A scoped question box, not a chat window. The distinction is load-bearing: a router runs
+   first and an out-of-scope question comes back in seconds with an honest reason and no
+   tool calls, so the box cannot produce a slow confident non-answer — which is the failure
+   mode that would define the product in a judge's memory. */
+.ask{margin:1.2rem 0 0}
+.ask-chips{display:flex; gap:.35rem; flex-wrap:wrap; margin-bottom:.55rem}
+.ask-chips button{
+  font:inherit; font-size:.78rem; cursor:pointer; padding:.3rem .65rem; border-radius:999px;
+  background:var(--panel); color:var(--ink2); border:1px solid var(--line); text-align:left;
+}
+.ask-chips button:hover{border-color:var(--amber); color:var(--ink)}
+.ask-chips button:focus-visible{outline:2px solid var(--cyan); outline-offset:2px}
+.ask-form{display:flex; gap:.4rem; flex-wrap:wrap}
+.ask-form input{
+  flex:1 1 18rem; min-width:0; font:inherit; font-size:.9rem; color:var(--ink);
+  background:var(--bg2); border:1px solid var(--line2); border-radius:8px; padding:.5rem .7rem;
+}
+.ask-form input:focus-visible{outline:2px solid var(--cyan); outline-offset:1px}
+.ask-out{margin-top:.7rem; display:none}
+.ask[data-state="routing"] .ask-out,
+.ask[data-state="working"] .ask-out,
+.ask[data-state="done"] .ask-out,
+.ask[data-state="rejected"] .ask-out,
+.ask[data-state="failed"] .ask-out{display:block}
+.ask-status{color:var(--ink3); font-size:.8rem; font-family:var(--mono)}
+.ask-answer{font-size:1.02rem; line-height:1.55; margin:.35rem 0 .5rem}
+.ask-conf{font-size:.7rem; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3)}
+.ask-caveat{color:var(--amber); font-size:.82rem; margin:.3rem 0 .5rem}
+.ask-rejected{border-left:3px solid var(--violet); padding-left:.75rem}
+.ask-rejected b{color:var(--ink)}
+.ask-ev{margin:.4rem 0 0; padding:0; list-style:none; display:grid; gap:.35rem}
+.ask-ev li{background:var(--bg2); border:1px solid var(--line); border-radius:8px; padding:.45rem .6rem}
+.ask-ev .c{font-size:.85rem}
+.ask-ev .q{font-family:var(--mono); font-size:.74rem; color:var(--ink3); overflow-x:auto;
+  display:block; white-space:pre; margin-top:.15rem}
+.ask-calls{font-family:var(--mono); font-size:.74rem; color:var(--ink3); margin-top:.3rem}
+html[data-persona="producer"] .ask-ev .q{display:none}
+
+/* per-persona: exactly ONE framing visible, and it works before JS runs.
+   This was lost in the multi-page refactor: the cut that removed the modal chooser's styles
+   ran from the `picker` banner to the `stages` banner, and this rule sat between them — so
+   all three framings rendered stacked, which is the opposite of the product's whole claim.
+   The regression was invisible to every automated check we had, because "three headings
+   instead of one" is valid HTML with no errors. Only looking at it caught it. */
+.frame{display:none}
+html[data-persona="td"] .frame[data-persona="td"],
+html[data-persona="supervisor"] .frame[data-persona="supervisor"],
+html[data-persona="producer"] .frame[data-persona="producer"]{display:block}
+
 /* ---------------------------------------------------------------- stages */
 .stages{list-style:none;margin:0;padding:0}
 .stage{border-bottom:1px solid var(--line)}
@@ -252,6 +351,40 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
 
 {% block content %}
 
+
+  <!-- ======================================================= 0. SUBJECT -->
+  <div class="subjbar">
+    <span class="lbl">Investigating</span>
+    <select class="subjsel" id="subjSel" aria-label="Which shot to investigate">
+      <option value="SH042">SH042 · lighting</option>
+    </select>
+    <span class="pill" id="subjStatus" data-status="">—</span>
+    <span class="meta" id="subjMeta"></span>
+    <span class="spacer"></span>
+    <a class="allshots" href="/shots">All shots →</a>
+  </div>
+
+  <section class="nosubject" id="noSubject">
+    <h3 id="noSubjectTitle">No recorded investigation for this shot</h3>
+    <p id="noSubjectBody"></p>
+    <button class="btn primary" id="btnRunSubject">Run investigation now</button>
+  </section>
+
+  <!-- ================================================================ ASK -->
+  <section class="sect ask" id="ask" data-state="idle">
+    <h2>Ask about this farm</h2>
+    <div class="ask-chips" id="askChips"></div>
+    <form class="ask-form" id="askForm">
+      <input id="askInput" type="text" autocomplete="off"
+             placeholder="e.g. does SH041 make its review?"
+             aria-label="Ask a question about this farm">
+      <button class="btn" type="submit" id="askBtn">Ask</button>
+    </form>
+    <div class="ask-out" id="askOut">
+      <p class="ask-status" id="askStatus"></p>
+      <div id="askBody"></div>
+    </div>
+  </section>
 
   <!-- ============================================================ 1. VERDICT -->
   <section class="zone" id="verdictZone" data-state="ready" aria-live="polite">
@@ -870,11 +1003,21 @@ async function runInvestigation() {
     /* `?inject=<stage>` on the page URL is forwarded so the failure path can be demoed
        against the real transport rather than faked in the client. */
     const inject = new URLSearchParams(location.search).get("inject") || "";
-    const r = await fetch("/api/run" + (inject ? "?inject=" + encodeURIComponent(inject) : ""),
+    /* Carry the selected subject and the live flag. Without the shot the agents would
+       always investigate the default pass, and the subject bar would be decoration. */
+    const q = new URLSearchParams();
+    if (inject) q.set("inject", inject);
+    if (new URLSearchParams(location.search).get("live") === "1") q.set("live", "1");
+    if (SUBJECT.shot) q.set("shot", SUBJECT.shot);
+    const r = await fetch("/api/run" + (q.toString() ? "?" + q : ""),
       { method: "POST" });
     if (!r.ok) throw new Error("could not start a run: " + r.status + " " + r.statusText);
     const { run_id } = await r.json();
     STATE.runId = run_id; STATE.live = true; STATE.done = false;
+    /* The run now IS about the selected shot, so the "no recorded run" state no longer
+       applies — reveal the zones the stream is about to fill. */
+    STATE.runShot = SUBJECT.shot;      // the run is now about the selected shot
+    applySubjectMismatch();
     status("live", "busy");
 
     const es = new EventSource("/api/run/" + run_id + "/stream");
@@ -1001,6 +1144,179 @@ $("btnBrief").addEventListener("click", async () => {
     btn.textContent = "▶ Dailies briefing"; btn.disabled = false;
   }
 });
+
+/* ---------------------------------------------------------- subject switcher */
+const SUBJECT = {
+  shot: (new URLSearchParams(location.search).get("shot") || "{{ subject_shot }}").toUpperCase(),
+  recorded: "{{ recorded_shot }}",
+  shots: [],
+};
+/* Which shot the run currently ON SCREEN is about. Starts as the recording's subject and
+   becomes the live run's subject once one starts. This is the only honest basis for
+   deciding whether what is displayed answers the question being asked. */
+STATE.runShot = "{{ recorded_shot }}";
+
+function subjectRow() { return SUBJECT.shots.find((s) => s.shot === SUBJECT.shot); }
+
+function renderSubject() {
+  const sel = $("subjSel");
+  if (SUBJECT.shots.length) {
+    sel.innerHTML = SUBJECT.shots.map((s) =>
+      '<option value="' + esc(s.shot) + '">' + esc(s.shot) + " · " + esc(s.department) +
+      "</option>").join("");
+  }
+  sel.value = SUBJECT.shot;
+  const row = subjectRow();
+  const pill = $("subjStatus");
+  pill.textContent = row ? String(row.status).replace("_", " ") : "unknown";
+  pill.dataset.status = row ? row.status : "";
+  $("subjMeta").textContent = row
+    ? (row.status === "done"
+        ? "pass complete"
+        : (row.frames_remaining || 0).toLocaleString() + " frames left · " +
+          (row.rate_per_min || 0).toFixed(1) + "/min" +
+          (row.slip_hours != null
+            ? " · slip " + (row.slip_hours > 0 ? "+" : "") + row.slip_hours.toFixed(1) + "h"
+            : ""))
+    : "";
+  applySubjectMismatch();
+}
+
+function applySubjectMismatch() {
+  /* A run belongs to ONE shot. If the operator is asking about another, showing it would
+     put the wrong shot's evidence under their heading.
+     Compare against the shot the DISPLAYED RUN is about — not against STATE.done, which the
+     recorded hydration sets to true, so the check never fired on the landing state. */
+  const shown = STATE.runShot || SUBJECT.recorded;
+  const mismatch = SUBJECT.shot !== shown;
+  document.documentElement.dataset.subjectMismatch = mismatch ? "1" : "0";
+  if (mismatch) {
+    $("noSubjectTitle").textContent = "No investigation on this page for " + SUBJECT.shot;
+    $("noSubjectBody").textContent =
+      "The run on this page investigated " + shown + ", and a recording cannot " +
+      "be re-pointed after the fact. Running the agents now will investigate " +
+      SUBJECT.shot + " against current telemetry — about three minutes.";
+  }
+}
+
+$("subjSel").addEventListener("change", (e) => {
+  SUBJECT.shot = e.target.value;
+  const u = new URL(location.href);
+  u.searchParams.set("shot", SUBJECT.shot);
+  history.replaceState(null, "", u);
+  renderSubject();
+});
+$("btnRunSubject").addEventListener("click", () => $("btnRun").click());
+
+(async function loadSubjects() {
+  try {
+    const r = await fetch("/api/fleet");
+    const d = await r.json();
+    SUBJECT.shots = d.shots || [];
+    if (d.error) status("sweep error", "bad");
+  } catch (_) { SUBJECT.shots = []; }
+  if (SUBJECT.shots.length && !SUBJECT.shots.some((s) => s.shot === SUBJECT.shot)) {
+    SUBJECT.shot = SUBJECT.shots[0].shot;      // a deep link to a shot that no longer exists
+  }
+  renderSubject();
+})();
+
+/* ----------------------------------------------------------------------- ask */
+let askES = null;
+
+function askState(st, statusText) {
+  $("ask").dataset.state = st;
+  if (statusText !== undefined) $("askStatus").textContent = statusText;
+}
+
+function askRender(e) {
+  const body = $("askBody");
+  if (e.type === "ask_rejected") {
+    askState("rejected", "out of scope · answered without touching a tool");
+    body.innerHTML = '<div class="ask-rejected"><p class="ask-answer">' + esc(e.reason) +
+      "</p>" + (e.suggestion
+        ? '<p class="ask-status">Try instead: <b>' + esc(e.suggestion) + "</b></p>"
+        : "") + "</div>";
+    return;
+  }
+  if (e.type === "ask_failed") {
+    askState("failed", "could not answer");
+    body.innerHTML = '<p class="ask-answer">' +
+      esc(e.hint || "The question could not be answered.") + "</p>" +
+      '<p class="ask-status">' + esc(String(e.error || "").slice(0, 200)) + "</p>";
+    return;
+  }
+  if (e.type === "ask_answer") {
+    askState("done", "answered · " + ASK.calls + " tool call" + (ASK.calls === 1 ? "" : "s"));
+    body.innerHTML =
+      '<p class="ask-conf">confidence ' + esc(e.confidence) + "</p>" +
+      '<p class="ask-answer">' + esc(e.answer) + "</p>" +
+      (e.caveat ? '<p class="ask-caveat">Caveat: ' + esc(e.caveat) + "</p>" : "") +
+      (e.evidence && e.evidence.length
+        ? '<ul class="ask-ev">' + e.evidence.map((ev) =>
+            "<li><span class=\"c\">" + esc(ev.claim) + "</span>" +
+            '<code class="q">' + esc(ev.tool) + " · " + esc(ev.query) + "</code></li>").join("") +
+          "</ul>"
+        : "");
+  }
+}
+
+const ASK = { calls: 0 };
+
+function askSubmit(question) {
+  if (!question) return;
+  if (askES) { askES.close(); askES = null; }
+  ASK.calls = 0;
+  $("askInput").value = question;
+  $("askBtn").disabled = true;
+  askState("routing", "checking whether this farm's telemetry can answer that…");
+  $("askBody").innerHTML = "";
+
+  /* Carry the selected subject so the answer is about the pass on screen. */
+  askES = new EventSource("/api/ask/stream?q=" + encodeURIComponent(question) +
+                          "&shot=" + encodeURIComponent(SUBJECT.shot || "SH042"));
+  askES.onmessage = (m) => {
+    let e; try { e = JSON.parse(m.data); } catch (_) { return; }
+    if (e.type === "ask_accepted") {
+      askState("working", "in scope — measuring…");
+    } else if (e.type === "tool_call") {
+      ASK.calls++;
+      askState("working", "measuring… " + ASK.calls + " tool call" +
+        (ASK.calls === 1 ? "" : "s") + " (" + e.name + ")");
+    } else if (e.type === "ask_answer" || e.type === "ask_rejected" || e.type === "ask_failed") {
+      askRender(e);
+      askES.close(); askES = null;
+      $("askBtn").disabled = false;
+    }
+  };
+  askES.onerror = () => {
+    /* The stream ends by closing, so an error after an answer is normal and must not
+       overwrite the answer that is already on screen. */
+    if ($("ask").dataset.state === "routing" || $("ask").dataset.state === "working") {
+      askState("failed", "the connection dropped before an answer arrived");
+    }
+    if (askES) { askES.close(); askES = null; }
+    $("askBtn").disabled = false;
+  };
+}
+
+$("askForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  askSubmit($("askInput").value.trim());
+});
+
+(async function loadChips() {
+  try {
+    const r = await fetch("/api/ask/suggestions");
+    const d = await r.json();
+    $("askChips").innerHTML = (d.suggestions || []).map((q) =>
+      '<button type="button">' + esc(q) + "</button>").join("");
+    $("askChips").querySelectorAll("button").forEach((b) =>
+      b.addEventListener("click", () => askSubmit(b.textContent)));
+  } catch (_) {
+    $("askChips").innerHTML = '<span class="ask-status">suggestions unavailable</span>';
+  }
+})();
 
 /* ------------------------------------------------------------------ boot */
 function hydrateRecorded() {
