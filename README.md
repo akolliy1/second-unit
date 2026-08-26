@@ -26,6 +26,28 @@ somebody says "we're going to miss Friday."
 The data was never missing. What's missing is the translation layer between infrastructure
 telemetry and production decisions.
 
+## The console
+
+Five pages, because an operator console answers four questions in order — and the fifth
+surface is documentation, which should never cost a navigation.
+
+| Page | Answers | What is on it |
+|---|---|---|
+| **Overview** `/` | *What needs me?* | Fleet triage across every in-flight shot, the active incident framed for your role, farm vitals, and the agent's own health |
+| **Investigation** `/investigation` | *Why, and what should I do?* | The five stages streaming live tool calls, evidence with the exact queries, the counterfactual, the approval gate, the spoken briefing |
+| **Shots** `/shots` | *Where does my work stand?* | Every pass against its **published** review deadline, on a shared time axis |
+| **Agent** `/agent` | *Do I trust what told me?* | Per-stage cost and tokens, tool latency, failure reasons, and **write-claim verification** |
+| **Role** `/start` | *Who is looking?* | A viewing lens — Pipeline TD, VFX Supervisor, Producer. Not a login: no accounts, nothing to sign into |
+
+Every page carries a **contextual documentation drawer** (the pattern the Google Cloud
+console uses) explaining what you are looking at, where each number came from, and what
+makes it trustworthy. Press `?` to open it.
+
+The fleet sweep on Overview and Shots uses **no model at all** — it is plain Python over one
+Prometheus query, every shot every time — so it cannot hallucinate a shot, cannot disagree
+with itself between runs, and costs nothing to refresh. The agent is spent only on the
+exception.
+
 ## What it does
 
 Five stages, deterministically sequenced, with a typed object at every boundary:
@@ -37,6 +59,11 @@ Five stages, deterministically sequenced, with a typed object at every boundary:
 | **Impact Forecaster** | the production consequence, in a producer's language | Pro |
 | **Remediation Planner** | the real-world fix and the proposed write-back. **Holds no write tools.** | Flash |
 | **Remediation Executor** | performs approved writes, one agent call per write | Flash |
+
+A sixth output is not a stage: the **dailies briefing** — the same finding spoken in about
+fifty seconds, because a crew's morning is a stand-up, not a dashboard review. The script is
+composed in Python from the typed stage outputs, so every number in it has already been
+computed and verified; only the speech is synthesized (Cloud Text-to-Speech, Chirp3-HD).
 
 Alongside them, a **fleet sweep** in plain Python answers "what else needs me?" across every
 in-flight shot with no model involved, so the agent is spent only on the exception.
@@ -87,6 +114,10 @@ and called, not named in a README. Exact call sites:
   pushed to the same stack it investigates
 
 **Google Cloud**
+- [`agent/second_unit/briefing.py`](03-prototype/agent/second_unit/briefing.py) — **Cloud
+  Text-to-Speech** (Chirp3-HD) for the spoken dailies briefing
+- [`agent/second_unit/tracing.py`](03-prototype/agent/second_unit/tracing.py) — ADK's own
+  OpenTelemetry GenAI spans exported to Grafana Cloud AI Observability
 - [`agent/second_unit/stages.py:28`](03-prototype/agent/second_unit/stages.py) — Gemini on
   **Vertex AI** (`gemini-2.5-flash` / `gemini-2.5-pro`), five ADK `LlmAgent`s with
   `output_schema` on every stage boundary
@@ -170,7 +201,7 @@ no conflict, and every MCP import dies).
 03-prototype/
   agent/second_unit/   the five stages, schemas, tools, verification, observability
   telemetry/           the render farm: scenario, remote_write/Loki push, seeder
-  web/                 FastAPI console — one page, SSE, no build step
+  web/                 FastAPI console — five pages on a shared layout, SSE, no build step
   dashboards/          two baseline Grafana dashboards, provisioned as JSON
   deploy/              Cloud Run service + job, Cloud Build, Secret Manager wiring
   ops/                 stack hygiene for artefacts the agent leaves behind

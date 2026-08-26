@@ -2,7 +2,7 @@
 
 Design constraints that shape every decision in this file:
 
-* One route (`/`) plus `/healthz`. No auth, no accounts, no second page. The hosted URL
+* Five pages plus a small JSON API. No auth, no accounts, no second page. The hosted URL
   has to work for a logged-out stranger on a phone (see 02-planning/08-ui-and-scope.md §1).
 * No frontend build step. One Jinja template with inlined CSS and JS, no CDN, because the
   deploy target has no guaranteed network egress and a blocked CDN would render the page
@@ -27,7 +27,12 @@ from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    Response,
+    StreamingResponse,
+)
 from fastapi.templating import Jinja2Templates
 
 HERE = Path(__file__).parent
@@ -79,7 +84,23 @@ class Run:
     approved_items: List[str] = field(default_factory=list)
     writeback_ids: List[str] = field(default_factory=list)
     live: bool = False          # run the real pipeline instead of replaying the recording
+    briefing_script: str = ""   # the spoken dailies script, composed by the pipeline
+    briefing_mp3: Optional[bytes] = None    # synthesized lazily, then cached per run
 
+
+# The web process never loaded .env, so anything reading os.environ at request time got
+# nothing — Text-to-Speech returned a 403 about a missing quota project, and the tracing
+# exporter silently declined to start. Load it here, before either is configured.
+try:
+    from dotenv import load_dotenv as _load_dotenv
+    from pathlib import Path as _P
+    for _cand in (_P(__file__).resolve().parent / ".env",
+                  _P(__file__).resolve().parent.parent / ".env"):
+        if _cand.is_file():
+            _load_dotenv(_cand)
+            break
+except Exception:  # noqa: BLE001
+    pass
 
 # Export ADK's own GenAI spans to Grafana Cloud AI Observability. Done at import so every
 # request path is traced, and guarded so a missing credential cannot stop the service.
@@ -142,7 +163,27 @@ async def _iter_live(run: Run, request: Request) -> AsyncIterator[str]:
     run.status = "streaming"
     yield _sse({"type": "hello", "run_id": run.id, "replay_speed": 1})
     try:
-        async for event in iter_live_events():
+        # HEARTBEAT. The recorded path already does this; the live path did not, and it
+        # cost us a truncated run on the hosted service: between one stage finishing and
+        # the next stage's first tool call there is a 30-60s silence while the model
+        # thinks, and Cloud Run's front end drops a connection that has sent no bytes.
+        # The stream then ends cleanly with no error event, which looks exactly like the
+        # agent dying halfway through — the worst possible thing for a judge to see.
+        #
+        # Wrapping __anext__ in wait_for lets us emit an SSE comment during the gaps
+        # without touching the pipeline itself.
+        events = iter_live_events().__aiter__()
+        while True:
+            try:
+                event = await asyncio.wait_for(events.__anext__(), timeout=10)
+            except asyncio.TimeoutError:
+                if await request.is_disconnected():
+                    run.status = "abandoned"
+                    return
+                yield ": keepalive\n\n"      # a comment: valid SSE, ignored by clients
+                continue
+            except StopAsyncIteration:
+                break
             if await request.is_disconnected():
                 run.status = "abandoned"
                 return
@@ -150,6 +191,8 @@ async def _iter_live(run: Run, request: Request) -> AsyncIterator[str]:
             # proposed, not against the fixture's items.
             if event.get("type") == "writeback_proposed":
                 run.writeback_ids = [i["id"] for i in event.get("items", [])]
+            if event.get("type") == "briefing" and event.get("script"):
+                run.briefing_script = event["script"]
             if event.get("type") == "run_done":
                 run.status = "complete"
             if event.get("type") == "run_failed":
@@ -227,6 +270,8 @@ async def _iter_events(run: Run, request: Request) -> AsyncIterator[str]:
 
         if event["type"] == "writeback_proposed":
             run.writeback_ids = [i["id"] for i in event.get("items", [])]
+        if event["type"] == "briefing" and event.get("script"):
+            run.briefing_script = event["script"]
         if event["type"] == "run_done":
             run.status = "complete"
 
@@ -240,9 +285,53 @@ async def _iter_events(run: Run, request: Request) -> AsyncIterator[str]:
 # --------------------------------------------------------------------------- routes
 
 
-@app.get("/start", response_class=HTMLResponse)
+def _chrome(request: Request, page_id: str, title: str, sub: str) -> dict:
+    """Context every page needs. Centralised so the rail, persona chip and drawer cannot
+    drift between pages — the most common way a multi-page prototype starts feeling cheap."""
+    asked = request.query_params.get("persona")
+    return {
+        "page_id": page_id,
+        "page_title": title,
+        "page_sub": sub,
+        "initial_persona": asked if asked in ("td", "supervisor", "producer") else "td",
+        "docs_open": request.query_params.get("docs") == "1",
+    }
+
+
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request) -> HTMLResponse:
+async def overview(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request=request, name="overview.html",
+        context=_chrome(request, "overview", "Overview",
+                        "What needs attention across every shot in flight"))
+
+
+@app.get("/shots", response_class=HTMLResponse)
+async def shots_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request=request, name="shots.html",
+        context=_chrome(request, "shots", "Shots",
+                        "Delivery status against each pass's published review deadline"))
+
+
+@app.get("/agent", response_class=HTMLResponse)
+async def agent_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request=request, name="agent.html",
+        context=_chrome(request, "agent", "Agent",
+                        "What the agent did, what it cost, and whether its claims held up"))
+
+
+@app.get("/start", response_class=HTMLResponse)
+async def start_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request=request, name="start.html",
+        context=_chrome(request, "start", "Who's looking at the farm?",
+                        "Same investigation, reported in the language of whoever acts on it"))
+
+
+@app.get("/investigation", response_class=HTMLResponse)
+async def investigation(request: Request) -> HTMLResponse:
     fixture = load_fixture()
     verdict = next(
         (e["event"] for e in fixture["events"] if e["event"]["type"] == "verdict"), None
@@ -252,23 +341,16 @@ async def index(request: Request) -> HTMLResponse:
     # and the headline survives JS being slow, blocked, or broken.
     return templates.TemplateResponse(
         request=request,
-        name="index.html",
+        name="investigation.html",
         context={
+            **_chrome(request, "investigation", "Investigation",
+                      "Five stages, live tool calls, and an approval gate before anything is written"),
             "scenario": fixture.get("scenario", {}),
             "verdict": verdict,
             # /start always shows the persona chooser; / shows it only on a first visit
             # (the client decides from localStorage). Either way the console is rendered
             # underneath, so the overlay never stands between a judge and the finding.
-            "force_picker": request.url.path == "/start",
-            # Render the requested framing SERVER-SIDE. Letting JS fix it after paint
-            # means a ?persona=producer link flashes the TD framing first, and shows the
-            # wrong one entirely if scripts are slow or blocked — on the one screen a judge
-            # is guaranteed to read.
-            "initial_persona": (
-                request.query_params.get("persona")
-                if request.query_params.get("persona") in ("td", "supervisor", "producer")
-                else "td"
-            ),
+
             # The recorded run is embedded in the page rather than fetched: it means a
             # judge landing on the URL sees a complete finding on first paint with no
             # second round trip, and the page stays coherent if the API is unreachable.
@@ -282,6 +364,24 @@ async def index(request: Request) -> HTMLResponse:
 # `/healthz` is intercepted by Google's frontend on Cloud Run -- the bare path returns a
 # Google-branded 404 that never reaches this app, while `/healthz/` and every other route
 # arrive normally. Serve the same payload under names that survive the edge.
+@app.get("/favicon.ico")
+async def favicon() -> Response:
+    """A tiny inline SVG favicon.
+
+    Not cosmetic paranoia: every page load was logging a 404 for /favicon.ico, and a judge
+    who opens devtools should not be greeted by a failed request on a page whose whole
+    argument is rigour. Inline so it adds no file and no external fetch.
+    """
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
+        '<rect width="32" height="32" rx="7" fill="#11161d"/>'
+        '<circle cx="16" cy="16" r="7.5" fill="none" stroke="#f5a623" stroke-width="2.5"/>'
+        '<circle cx="16" cy="16" r="2.5" fill="#f5a623"/></svg>'
+    )
+    return Response(content=svg, media_type="image/svg+xml",
+                    headers={"Cache-Control": "public, max-age=86400"})
+
+
 @app.get("/health")
 @app.get("/api/health")
 @app.get("/healthz")
@@ -426,6 +526,159 @@ def _echo(items: List[str]) -> List[Dict[str, str]]:
          "effect": "stubbed in this build"}
         for i in items
     ]
+
+
+@app.get("/api/run/{run_id}/briefing.mp3")
+async def briefing_audio(run_id: str) -> Response:
+    """Synthesize the dailies briefing for a run, and cache it on the run.
+
+    Synthesis is a second or two, so it happens on demand rather than during the
+    investigation — a judge who never presses play should not wait for audio they did not
+    ask for, and a TTS outage must not be able to fail a run.
+    """
+    run = RUNS.get(run_id)
+    if run is None:
+        return JSONResponse({"error": "unknown or expired run"}, status_code=404)
+    script = run.briefing_script or (load_fixture().get("briefing") or {}).get("script", "")
+    if not script:
+        return JSONResponse(
+            {"error": "no briefing for this run yet",
+             "hint": "the briefing is composed after the remediation plan"},
+            status_code=409)
+    if run.briefing_mp3 is None:
+        try:
+            from second_unit.briefing import synthesize
+            run.briefing_mp3 = synthesize(script)
+        except Exception as exc:  # noqa: BLE001
+            return JSONResponse(
+                {"error": f"speech synthesis unavailable: {type(exc).__name__}",
+                 "detail": str(exc)[:200],
+                 "script": script,
+                 "hint": "the text of the briefing is returned so it is still readable"},
+                status_code=503)
+    return Response(content=run.briefing_mp3, media_type="audio/mpeg",
+                    headers={"Cache-Control": "public, max-age=3600",
+                             "Content-Disposition": 'inline; filename="dailies.mp3"'})
+
+
+# --------------------------------------------------------------------------- data APIs
+#
+# These exist so the console's pages can be built and tested independently of the agent.
+# Every one is CHEAP and DETERMINISTIC — Prometheus queries and arithmetic, no model calls —
+# because a dashboard that costs an LLM invocation to render is a dashboard nobody refreshes.
+
+
+def _deadline_and_shots():
+    from second_unit import fleet
+    from second_unit import run as run_mod
+    from second_unit.run import published_review_deadline
+    dl = published_review_deadline("SH042")
+    return dl, fleet.fleet_status(dl), fleet, run_mod
+
+
+@app.get("/api/fleet")
+async def api_fleet() -> JSONResponse:
+    """Every in-flight shot with its own forecast. The Overview's triage strip."""
+    try:
+        dl, shots, fleet, run_mod = _deadline_and_shots()
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"error": f"{type(exc).__name__}: {exc}", "shots": []},
+                            status_code=503)
+    return JSONResponse({
+        "deadline": dl,
+        # Never hide a failed sweep behind an empty list: an empty strip that looks like a
+        # farm with no work in it is worse than an error a human can act on.
+        "error": fleet.last_error,
+        "deadline_is_placeholder": bool(run_mod.deadline_fallback_reason),
+        "deadline_placeholder_reason": run_mod.deadline_fallback_reason,
+        "shots": [
+            {"shot": s.shot, "department": s.department, "status": s.status,
+             "frames_remaining": s.frames_remaining, "rate_per_min": s.rate_per_min,
+             "eta": s.eta_iso, "deadline": s.deadline_iso, "slip_hours": s.slip_hours,
+             "note": s.note}
+            for s in shots
+        ],
+        "exceptions": [s.shot for s in shots if s.is_exception],
+    })
+
+
+@app.get("/api/vitals")
+async def api_vitals() -> JSONResponse:
+    """Farm vitals for the Overview: throughput, queue, faulty nodes, cycle phase."""
+    from second_unit import fleet
+    out = {}
+    try:
+        def one(expr, cast=float):
+            rows = fleet._prom_query(expr)
+            return cast(rows[0]["value"][1]) if rows else None
+
+        out["throughput_now"] = one(
+            'sum(rate(render_frames_completed_total[15m])) * 60')
+        out["queue_lighting"] = one('render_queue_depth{queue="lighting"}')
+        ecc = fleet._prom_query(
+            'sum by (node) (increase(render_node_gpu_ecc_errors_total[30m])) > 0')
+        out["faulty_nodes"] = [r["metric"].get("node") for r in ecc]
+        hot = fleet._prom_query('topk(1, render_node_gpu_temp_celsius)')
+        out["hottest_node"] = (
+            {"node": hot[0]["metric"].get("node"),
+             "celsius": round(float(hot[0]["value"][1]), 1)} if hot else None)
+        # Cycle phase, derived from the published deadline: the scenario loops, and a judge
+        # arriving mid-repair should be told that rather than left confused by a calm farm.
+        rows = fleet._prom_query('shot_review_deadline_seconds{shot="SH042"}')
+        if rows:
+            import time as _t
+            deadline_ts = float(rows[0]["value"][1])
+            minute = (_t.time() - (deadline_ts - 170 * 60)) / 60.0
+            out["cycle_minute"] = round(minute)
+            out["cycle_phase"] = (
+                "pre-fault" if minute < 0 else "fault building" if minute < 20
+                else "degraded" if minute <= 170 else "past deadline" if minute < 180
+                else "repaired" if minute < 240 else "restarting")
+        out["error"] = fleet.last_error
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"error": f"{type(exc).__name__}: {exc}"}, status_code=503)
+    return JSONResponse(out)
+
+
+@app.get("/api/agent/metrics")
+async def api_agent_metrics() -> JSONResponse:
+    """What the agent did to itself: our own observability series, read back.
+
+    Read from Prometheus rather than kept in memory on purpose — the numbers a judge sees
+    on this page are the same ones in Grafana, from the same source, so the page cannot
+    flatter the agent.
+    """
+    from second_unit import fleet
+
+    #: How far back to look for the last run's self-telemetry.
+    #:
+    #: These series are written ONCE per investigation, not scraped continuously, so a plain
+    #: instant query only sees them if a run finished inside Prometheus's ~5-minute lookback.
+    #: Everything then returns empty and the page reads as "the agent has never run" — which
+    #: is a different and much worse claim than "no run recently". `last_over_time` asks the
+    #: right question: what did the most recent run report? Same mistake we made with the
+    #: farm metrics; see telemetry/README.md.
+    WINDOW = os.environ.get("AGENT_METRICS_WINDOW", "6h")
+
+    def series(metric: str):
+        try:
+            rows = fleet._prom_query(f"last_over_time({metric}[{WINDOW}])")
+            return [{"labels": {k: v for k, v in r["metric"].items()
+                                if k not in ("__name__", "job")},
+                     "value": float(r["value"][1])}
+                    for r in rows]
+        except Exception:  # noqa: BLE001
+            return []
+    return JSONResponse({
+        "window": WINDOW,
+        "stage_seconds": series("second_unit_run_seconds"),
+        "tool_calls": series("second_unit_tool_calls_total"),
+        "tokens": series("second_unit_tokens_total"),
+        "tool_latency_ms": series("second_unit_tool_latency_ms"),
+        "failures": series("second_unit_stage_failures_total"),
+        "write_claims": series("second_unit_write_claims_total"),
+        "grafana_url": os.environ.get("GRAFANA_URL", ""),
+    })
 
 
 @app.post("/api/reset")

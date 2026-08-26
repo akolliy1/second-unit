@@ -22,25 +22,141 @@
         "type": "run_started",
         "scenario": "sh042-render-07-ecc",
         "stages": [
-          {"id": "watchtower", "label": "Watchtower", "role": "what is on fire"},
-          {"id": "diagnostician", "label": "Diagnostician", "role": "why"},
-          {"id": "impact_forecaster", "label": "Impact Forecaster", "role": "what it costs"}
+          {
+            "id": "watchtower",
+            "label": "Watchtower",
+            "role": "what is on fire"
+          },
+          {
+            "id": "diagnostician",
+            "label": "Diagnostician",
+            "role": "why"
+          },
+          {
+            "id": "impact_forecaster",
+            "label": "Impact Forecaster",
+            "role": "what it costs"
+          }
         ]
       }
     },
-
-    {"after_ms": 400, "event": {"type": "stage_started", "stage": "watchtower"}},
-
-    {"after_ms": 1900, "event": {"type": "tool_call", "stage": "watchtower", "name": "list_datasources", "args": {}, "ms": 1412}},
-    {"after_ms": 2100, "event": {"type": "tool_call", "stage": "watchtower", "name": "list_alert_groups", "args": {}, "ms": 1880}},
-    {"after_ms": 3400, "event": {"type": "tool_call", "stage": "watchtower", "name": "list_prometheus_metric_names", "args": {"regex": "render_.*"}, "ms": 1103}},
-    {"after_ms": 5200, "event": {"type": "tool_call", "stage": "watchtower", "name": "query_prometheus", "args": {"datasourceUid": "grafanacloud-prom", "expr": "sum by (department) (render_queue_depth)"}, "ms": 2310}},
-    {"after_ms": 6800, "event": {"type": "tool_call", "stage": "watchtower", "name": "query_prometheus", "args": {"datasourceUid": "grafanacloud-prom", "expr": "sum by (node) (increase(render_frames_failed_total[30m])) > 0"}, "ms": 2044}},
-    {"after_ms": 9100, "event": {"type": "tool_call", "stage": "watchtower", "name": "find_error_pattern_logs", "args": {"datasourceUid": "grafanacloud-logs", "logql": "{service=~\"render-node|render-scheduler\"}"}, "ms": 6512}},
-    {"after_ms": 6200, "event": {"type": "tool_call", "stage": "watchtower", "name": "query_loki_logs", "args": {"datasourceUid": "grafanacloud-logs", "logql": "{service=\"render-node\"} |= \"uncorrectable\""}, "ms": 4180}},
-    {"after_ms": 5100, "event": {"type": "tool_call", "stage": "watchtower", "name": "query_loki_logs", "args": {"datasourceUid": "grafanacloud-logs", "logql": "{service=\"render-scheduler\"} |= \"frame failed\""}, "ms": 3902}},
-    {"after_ms": 4700, "event": {"type": "tool_call", "stage": "watchtower", "name": "query_prometheus", "args": {"datasourceUid": "grafanacloud-prom", "expr": "avg by (node) (render_node_gpu_temp_celsius)"}, "ms": 2260}},
-
+    {
+      "after_ms": 400,
+      "event": {
+        "type": "stage_started",
+        "stage": "watchtower"
+      }
+    },
+    {
+      "after_ms": 1900,
+      "event": {
+        "type": "tool_call",
+        "stage": "watchtower",
+        "name": "list_datasources",
+        "args": {},
+        "ms": 1412
+      }
+    },
+    {
+      "after_ms": 2100,
+      "event": {
+        "type": "tool_call",
+        "stage": "watchtower",
+        "name": "list_alert_groups",
+        "args": {},
+        "ms": 1880
+      }
+    },
+    {
+      "after_ms": 3400,
+      "event": {
+        "type": "tool_call",
+        "stage": "watchtower",
+        "name": "list_prometheus_metric_names",
+        "args": {
+          "regex": "render_.*"
+        },
+        "ms": 1103
+      }
+    },
+    {
+      "after_ms": 5200,
+      "event": {
+        "type": "tool_call",
+        "stage": "watchtower",
+        "name": "query_prometheus",
+        "args": {
+          "datasourceUid": "grafanacloud-prom",
+          "expr": "sum by (department) (render_queue_depth)"
+        },
+        "ms": 2310
+      }
+    },
+    {
+      "after_ms": 6800,
+      "event": {
+        "type": "tool_call",
+        "stage": "watchtower",
+        "name": "query_prometheus",
+        "args": {
+          "datasourceUid": "grafanacloud-prom",
+          "expr": "sum by (node) (increase(render_frames_failed_total[30m])) > 0"
+        },
+        "ms": 2044
+      }
+    },
+    {
+      "after_ms": 9100,
+      "event": {
+        "type": "tool_call",
+        "stage": "watchtower",
+        "name": "find_error_pattern_logs",
+        "args": {
+          "datasourceUid": "grafanacloud-logs",
+          "logql": "{service=~\"render-node|render-scheduler\"}"
+        },
+        "ms": 6512
+      }
+    },
+    {
+      "after_ms": 6200,
+      "event": {
+        "type": "tool_call",
+        "stage": "watchtower",
+        "name": "query_loki_logs",
+        "args": {
+          "datasourceUid": "grafanacloud-logs",
+          "logql": "{service=\"render-node\"} |= \"uncorrectable\""
+        },
+        "ms": 4180
+      }
+    },
+    {
+      "after_ms": 5100,
+      "event": {
+        "type": "tool_call",
+        "stage": "watchtower",
+        "name": "query_loki_logs",
+        "args": {
+          "datasourceUid": "grafanacloud-logs",
+          "logql": "{service=\"render-scheduler\"} |= \"frame failed\""
+        },
+        "ms": 3902
+      }
+    },
+    {
+      "after_ms": 4700,
+      "event": {
+        "type": "tool_call",
+        "stage": "watchtower",
+        "name": "query_prometheus",
+        "args": {
+          "datasourceUid": "grafanacloud-prom",
+          "expr": "avg by (node) (render_node_gpu_temp_celsius)"
+        },
+        "ms": 2260
+      }
+    },
     {
       "after_ms": 1400,
       "event": {
@@ -51,21 +167,26 @@
         "output": {
           "summary": "The render farm is experiencing significant frame failures on render-07 due to GPU faults, causing a substantial increase in the lighting department's render queue depth.",
           "firing_alerts": [
-            "RenderQueueDepthHigh (lighting) — firing 1h 52m",
-            "RenderNodeFrameFailures (render-07) — firing 1h 47m"
+            "RenderQueueDepthHigh (lighting) \u2014 firing 1h 52m",
+            "RenderNodeFrameFailures (render-07) \u2014 firing 1h 47m"
           ],
           "error_signatures": [
             "CUDA error: uncorrectable ECC error encountered (cudaErrorECCUncorrectable) at kernel launch",
             "NVRM: Xid (PCI:0000:41:00): 48, pid=0, GPU has fallen off the bus. uncorrectable ECC error encountered on GPU 0",
             "level=error service=render-scheduler shot=SH042 department=lighting frame=1184 node=render-07 exit_code=139 msg=\"frame failed, requeueing\" retry=1/3"
           ],
-          "suspect_entities": ["render-07", "lighting", "SH042", "render-scheduler"],
+          "suspect_entities": [
+            "render-07",
+            "lighting",
+            "SH042",
+            "render-scheduler"
+          ],
           "evidence": [
             {
               "claim": "The lighting queue is more than three times its normal depth.",
               "tool": "query_prometheus",
               "query": "sum by (department) (render_queue_depth)",
-              "observed": "lighting=62, animation=9, fx=14, comp=6 — lighting sat at 18 before 02:14."
+              "observed": "lighting=62, animation=9, fx=14, comp=6 \u2014 lighting sat at 18 before 02:14."
             },
             {
               "claim": "Frame failures are confined to a single node.",
@@ -83,16 +204,91 @@
         }
       }
     },
-
-    {"after_ms": 700, "event": {"type": "stage_started", "stage": "diagnostician"}},
-
-    {"after_ms": 3900, "event": {"type": "tool_call", "stage": "diagnostician", "name": "list_prometheus_label_values", "args": {"datasourceUid": "grafanacloud-prom", "label": "node"}, "ms": 1740}},
-    {"after_ms": 9200, "event": {"type": "tool_call", "stage": "diagnostician", "name": "query_prometheus", "args": {"datasourceUid": "grafanacloud-prom", "expr": "avg by (node) (render_node_gpu_temp_celsius{node=~\"render-01|render-07|render-08|render-09\"})"}, "ms": 3120}},
-    {"after_ms": 12400, "event": {"type": "tool_call", "stage": "diagnostician", "name": "query_prometheus", "args": {"datasourceUid": "grafanacloud-prom", "expr": "sum by (node, reason) (increase(render_frames_failed_total[90m])) > 0"}, "ms": 2880}},
-    {"after_ms": 14100, "event": {"type": "tool_call", "stage": "diagnostician", "name": "query_loki_logs", "args": {"datasourceUid": "grafanacloud-logs", "logql": "{node=\"render-07\"} |= \"Xid\""}, "ms": 4410}},
-    {"after_ms": 11800, "event": {"type": "tool_call", "stage": "diagnostician", "name": "query_prometheus", "args": {"datasourceUid": "grafanacloud-prom", "expr": "sum by (department) (render_queue_depth{department=\"lighting\"})"}, "ms": 2190}},
-    {"after_ms": 12300, "event": {"type": "tool_call", "stage": "diagnostician", "name": "query_loki_logs", "args": {"datasourceUid": "grafanacloud-logs", "logql": "{department=\"lighting\"} |= \"error\" != \"render-07\""}, "ms": 5030}},
-
+    {
+      "after_ms": 700,
+      "event": {
+        "type": "stage_started",
+        "stage": "diagnostician"
+      }
+    },
+    {
+      "after_ms": 3900,
+      "event": {
+        "type": "tool_call",
+        "stage": "diagnostician",
+        "name": "list_prometheus_label_values",
+        "args": {
+          "datasourceUid": "grafanacloud-prom",
+          "label": "node"
+        },
+        "ms": 1740
+      }
+    },
+    {
+      "after_ms": 9200,
+      "event": {
+        "type": "tool_call",
+        "stage": "diagnostician",
+        "name": "query_prometheus",
+        "args": {
+          "datasourceUid": "grafanacloud-prom",
+          "expr": "avg by (node) (render_node_gpu_temp_celsius{node=~\"render-01|render-07|render-08|render-09\"})"
+        },
+        "ms": 3120
+      }
+    },
+    {
+      "after_ms": 12400,
+      "event": {
+        "type": "tool_call",
+        "stage": "diagnostician",
+        "name": "query_prometheus",
+        "args": {
+          "datasourceUid": "grafanacloud-prom",
+          "expr": "sum by (node, reason) (increase(render_frames_failed_total[90m])) > 0"
+        },
+        "ms": 2880
+      }
+    },
+    {
+      "after_ms": 14100,
+      "event": {
+        "type": "tool_call",
+        "stage": "diagnostician",
+        "name": "query_loki_logs",
+        "args": {
+          "datasourceUid": "grafanacloud-logs",
+          "logql": "{node=\"render-07\"} |= \"Xid\""
+        },
+        "ms": 4410
+      }
+    },
+    {
+      "after_ms": 11800,
+      "event": {
+        "type": "tool_call",
+        "stage": "diagnostician",
+        "name": "query_prometheus",
+        "args": {
+          "datasourceUid": "grafanacloud-prom",
+          "expr": "sum by (department) (render_queue_depth{department=\"lighting\"})"
+        },
+        "ms": 2190
+      }
+    },
+    {
+      "after_ms": 12300,
+      "event": {
+        "type": "tool_call",
+        "stage": "diagnostician",
+        "name": "query_loki_logs",
+        "args": {
+          "datasourceUid": "grafanacloud-logs",
+          "logql": "{department=\"lighting\"} |= \"error\" != \"render-07\""
+        },
+        "ms": 5030
+      }
+    },
     {
       "after_ms": 2400,
       "event": {
@@ -130,7 +326,9 @@
               "reasoning": "SH042 lighting frames scheduled onto healthy nodes complete normally, and lighting log lines excluding render-07 contain no render-software errors. The failure follows the node, not the shot or the department."
             }
           ],
-          "affected_shots": ["SH042"],
+          "affected_shots": [
+            "SH042"
+          ],
           "evidence": [
             {
               "claim": "render-07's GPU is 20 C hotter than every peer node.",
@@ -160,12 +358,39 @@
         }
       }
     },
-
-    {"after_ms": 700, "event": {"type": "stage_started", "stage": "impact_forecaster"}},
-
-    {"after_ms": 6300, "event": {"type": "tool_call", "stage": "impact_forecaster", "name": "query_prometheus", "args": {"datasourceUid": "grafanacloud-prom", "expr": "sum(render_frames_remaining{shot=\"SH042\", department=\"lighting\"})"}, "ms": 2260}},
-    {"after_ms": 8100, "event": {"type": "tool_call", "stage": "impact_forecaster", "name": "query_prometheus", "args": {"datasourceUid": "grafanacloud-prom", "expr": "sum(rate(render_frames_completed_total{shot=\"SH042\"}[15m])) * 60"}, "ms": 2740}},
-
+    {
+      "after_ms": 700,
+      "event": {
+        "type": "stage_started",
+        "stage": "impact_forecaster"
+      }
+    },
+    {
+      "after_ms": 6300,
+      "event": {
+        "type": "tool_call",
+        "stage": "impact_forecaster",
+        "name": "query_prometheus",
+        "args": {
+          "datasourceUid": "grafanacloud-prom",
+          "expr": "sum(render_frames_remaining{shot=\"SH042\", department=\"lighting\"})"
+        },
+        "ms": 2260
+      }
+    },
+    {
+      "after_ms": 8100,
+      "event": {
+        "type": "tool_call",
+        "stage": "impact_forecaster",
+        "name": "query_prometheus",
+        "args": {
+          "datasourceUid": "grafanacloud-prom",
+          "expr": "sum(rate(render_frames_completed_total{shot=\"SH042\"}[15m])) * 60"
+        },
+        "ms": 2740
+      }
+    },
     {
       "after_ms": 2100,
       "event": {
@@ -210,31 +435,44 @@
         }
       }
     },
-
     {
       "after_ms": 600,
       "event": {
         "type": "verdict",
         "severity": "critical",
-        "subject": "SH042 · LIGHTING PASS",
+        "subject": "SH042 \u00b7 LIGHTING PASS",
         "metrics": [
-          {"label": "frames left", "value": "1,619"},
-          {"label": "throughput", "value": "5.5 fr/min", "was": "10.1"},
-          {"label": "ETA", "value": "Fri 16:18", "was": "Fri 13:40"},
-          {"label": "capacity", "value": "−46%"}
+          {
+            "label": "frames left",
+            "value": "1,619"
+          },
+          {
+            "label": "throughput",
+            "value": "5.5 fr/min",
+            "was": "10.1"
+          },
+          {
+            "label": "ETA",
+            "value": "Fri 16:18",
+            "was": "Fri 13:40"
+          },
+          {
+            "label": "capacity",
+            "value": "\u221246%"
+          }
         ],
         "personas": {
           "td": {
-            "headline": "render-07 GPU is throwing uncorrectable ECC — lighting capacity −46%",
+            "headline": "render-07 GPU is throwing uncorrectable ECC \u2014 lighting capacity \u221246%",
             "sub": "Xid 48 since 02:14, 138 frames failed exit 139 in 90m, all on one node. Peers clean. Scheduler is requeueing onto the fault.",
-            "action": "Drain render-07 from the lighting pool, requeue SH042 frames 1184–2803 to render-01/08/09, raise a hardware ticket on the GPU.",
+            "action": "Drain render-07 from the lighting pool, requeue SH042 frames 1184\u20132803 to render-01/08/09, raise a hardware ticket on the GPU.",
             "risk": "Draining costs 1 of 6 nodes; the remaining pool clears the backlog at 9.4 fr/min."
           },
           "supervisor": {
             "headline": "SH042's lighting pass is 2h 18m behind, and one node is the cause",
             "sub": "render-07 is failing every frame it is given. Nothing is wrong with the shot, the lighting setup, or the other five nodes.",
             "action": "Approve draining render-07. SH042 then lands about 16 minutes before the review instead of 2h 18m after it.",
-            "risk": "No creative rework needed — no frame rendered on a healthy node has failed."
+            "risk": "No creative rework needed \u2014 no frame rendered on a healthy node has failed."
           },
           "producer": {
             "headline": "SH042 misses Friday's 14:00 client review by 2h 18m",
@@ -245,7 +483,6 @@
         }
       }
     },
-
     {
       "after_ms": 500,
       "event": {
@@ -256,14 +493,14 @@
             "id": "annotation",
             "kind": "annotation",
             "title": "Annotation on the render-farm timeline",
-            "detail": "render-07 GPU fault (Xid 48 / uncorrectable ECC) from 02:14 — SH042 lighting frames failing exit 139",
+            "detail": "render-07 GPU fault (Xid 48 / uncorrectable ECC) from 02:14 \u2014 SH042 lighting frames failing exit 139",
             "target": "dashboard: Render Farm Overview",
             "scope": "annotations:write"
           },
           {
             "id": "dashboard",
             "kind": "dashboard",
-            "title": "Incident dashboard “SH042 lighting slip”",
+            "title": "Incident dashboard \u201cSH042 lighting slip\u201d",
             "detail": "Four panels: lighting queue depth, per-node frame failures, render-07 GPU temperature, SH042 frames remaining vs. deadline",
             "target": "folder: Incidents",
             "scope": "dashboards:write"
@@ -279,7 +516,14 @@
         ]
       }
     },
-
+    {
+      "after_ms": 900,
+      "event": {
+        "type": "briefing",
+        "script": "Morning. SH042's lighting pass is behind. It misses today's client review by about 2 hours and 18 minutes. There are 1,619 frames left. The farm is completing 6 a minute, down from 10 \u2014 a 46 percent drop in capacity. A GPU hardware fault on render-07 is producing uncorrectable memory errors. We ruled out 2 other explanations, including the possibility that the other render nodes are also failing and contributing to the problem. Recommended: drain render-07 from the farm and schedule GPU replacement. If that happens now, the pass lands 26 minutes inside the review. The lighting department is blocked on SH042; compositing is blocked downstream once their work in progress clears. Nothing has been changed in Grafana. The write-back is waiting for your approval.",
+        "seconds_estimate": 48
+      }
+    },
     {
       "after_ms": 300,
       "event": {
@@ -289,5 +533,9 @@
         "stages_ok": 3
       }
     }
-  ]
+  ],
+  "briefing": {
+    "script": "Morning. SH042's lighting pass is behind. It misses today's client review by about 2 hours and 18 minutes. There are 1,619 frames left. The farm is completing 6 a minute, down from 10 \u2014 a 46 percent drop in capacity. A GPU hardware fault on render-07 is producing uncorrectable memory errors. We ruled out 2 other explanations, including the possibility that the other render nodes are also failing and contributing to the problem. Recommended: drain render-07 from the farm and schedule GPU replacement. If that happens now, the pass lands 26 minutes inside the review. The lighting department is blocked on SH042; compositing is blocked downstream once their work in progress clears. Nothing has been changed in Grafana. The write-back is waiting for your approval.",
+    "seconds_estimate": 48
+  }
 }

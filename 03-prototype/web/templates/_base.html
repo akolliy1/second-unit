@@ -1,0 +1,258 @@
+{#
+  Shared layout for every page.
+
+  One skeleton, four pages. The rail and top bar are identical everywhere so navigation
+  costs no re-learning, and the documentation drawer is part of the frame rather than a
+  per-page afterthought — an operator console is full of terms that need one sentence of
+  explanation, and making someone leave the page to get it is hostile.
+
+  Pages provide: page_id, page_title, page_sub, the `content` block, the `docs` block, and
+  optionally `head_extra` / `scripts`.
+#}
+<!doctype html>
+<html lang="en" data-persona="{{ initial_persona|default('td') }}"
+      data-page="{{ page_id }}" data-docs="{{ '1' if docs_open else '0' }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ page_title }} · Second Unit</title>
+<meta name="description" content="Autonomous post-production pipeline SRE — a crew of agents that reads a render farm's telemetry and answers whether the shot makes its deadline.">
+<style>
+{% include 'partials/_tokens.css' %}
+
+/* ============================================================ app shell
+   Grid rather than fixed positioning: the rail and drawer are columns, so content reflows
+   instead of sliding under them, and the drawer cannot cover the primary action. */
+body{
+  margin:0; min-height:100vh;
+  background:radial-gradient(1200px 600px at 50% -10%, #131a24 0%, transparent 60%), var(--bg);
+  color:var(--ink); font-family:var(--sans); font-size:16px; line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+.app{
+  display:grid; min-height:100vh;
+  grid-template-columns:236px minmax(0,1fr);
+  grid-template-rows:auto 1fr;
+  grid-template-areas:"rail top" "rail main";
+}
+html[data-docs="1"] .app{ grid-template-columns:236px minmax(0,1fr) 360px;
+  grid-template-areas:"rail top top" "rail main docs"; }
+/* -------------------------------------------------------------------- rail */
+.rail{
+  grid-area:rail; display:flex; flex-direction:column; gap:.15rem;
+  background:var(--bg2); border-right:1px solid var(--line);
+  padding:.9rem .6rem; position:sticky; top:0; height:100vh;
+}
+.rbrand{display:flex; flex-direction:column; gap:.1rem; padding:.35rem .5rem 1rem; }
+.rbrand b{font-size:1.02rem; letter-spacing:-.02em}
+.rbrand small{color:var(--ink3); font-size:.68rem; letter-spacing:.09em; text-transform:uppercase}
+.rail a{
+  display:flex; align-items:center; gap:.65rem; padding:.55rem .6rem; border-radius:8px;
+  color:var(--ink2); text-decoration:none; font-size:.9rem; white-space:nowrap;
+}
+.rail a:hover{background:var(--panel); color:var(--ink)}
+.rail a[aria-current="page"]{background:var(--panel2); color:var(--ink); font-weight:600;
+  box-shadow:inset 2px 0 0 var(--amber)}
+.rail a:focus-visible{outline:2px solid var(--cyan); outline-offset:2px}
+.rico{width:18px; text-align:center; flex:0 0 18px; font-size:1rem}
+.rail .rfoot{margin-top:auto; color:var(--ink3); font-size:.7rem; padding:.5rem}
+
+/* ----------------------------------------------------------------- top bar */
+.top{
+  grid-area:top; display:flex; align-items:center; gap:.75rem; flex-wrap:wrap;
+  padding:.7rem clamp(.75rem,2.5vw,1.35rem);
+  background:color-mix(in srgb, var(--bg2) 88%, transparent);
+  border-bottom:1px solid var(--line); position:sticky; top:0; z-index:30;
+  backdrop-filter:blur(8px);
+}
+.ptitle{display:flex; flex-direction:column; min-width:0}
+.ptitle h1{margin:0; font-size:1.02rem; letter-spacing:-.01em}
+.ptitle p{margin:0; color:var(--ink3); font-size:.76rem}
+.tspace{flex:1 1 auto}
+.chip{
+  display:inline-flex; align-items:center; gap:.4rem; padding:.34rem .6rem;
+  border:1px solid var(--line); border-radius:999px; background:var(--panel);
+  color:var(--ink2); font-size:.78rem; text-decoration:none; white-space:nowrap;
+}
+.chip:hover{border-color:var(--amber); color:var(--ink)}
+.chip b{color:var(--ink); font-weight:600}
+.dot{width:8px; height:8px; border-radius:50%; background:var(--ink3); flex:0 0 8px}
+.dot.live{background:var(--ok); box-shadow:0 0 0 3px var(--ok-dim)}
+.dot.warn{background:var(--amber); box-shadow:0 0 0 3px var(--amber-dim)}
+.dot.bad{background:var(--crit); box-shadow:0 0 0 3px var(--crit-dim)}
+.navbtn{display:none; background:var(--panel); border:1px solid var(--line); color:var(--ink);
+  border-radius:8px; padding:.35rem .55rem; cursor:pointer}
+
+/* -------------------------------------------------------------------- main */
+main{grid-area:main; padding:clamp(.9rem,2.5vw,1.6rem); min-width:0}
+.page{max-width:1080px; margin:0 auto}
+.sect{margin:0 0 1.4rem}
+.sect > h2{
+  margin:0 0 .55rem; font-size:.74rem; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--ink3); font-weight:650;
+}
+.card{background:var(--panel); border:1px solid var(--line); border-radius:var(--r); padding:1rem}
+.grid{display:grid; gap:.75rem}
+.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (max-width:900px){ .g4{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .g3,.g2{grid-template-columns:minmax(0,1fr)} }
+@media (max-width:560px){ .g4{grid-template-columns:minmax(0,1fr)} }
+.btn{
+  display:inline-flex; align-items:center; gap:.45rem; cursor:pointer; font:inherit;
+  font-size:.86rem; font-weight:600; padding:.5rem .9rem; border-radius:8px;
+  background:var(--panel2); color:var(--ink); border:1px solid var(--line2);
+}
+.btn:hover{border-color:var(--amber)}
+.btn:focus-visible{outline:2px solid var(--cyan); outline-offset:2px}
+.btn.primary{background:var(--amber); color:#1a1205; border-color:transparent}
+.btn[disabled]{opacity:.55; cursor:not-allowed}
+.mono{font-family:var(--mono); font-size:.8rem}
+.dim{color:var(--ink3)}
+.sr{position:absolute; left:-9999px}
+.sr:focus{left:.5rem; top:.5rem; background:var(--panel); padding:.5rem; z-index:99}
+
+/* =========================================================== responsive
+   These live AFTER the component rules on purpose. @media adds no specificity, so a
+   `.rail{display:none}` placed above `.rail{display:flex}` loses — which is exactly what
+   happened: on a 390px viewport the rail stayed visible, fell out of its named grid area,
+   and squeezed the content column to 215px. Order is the whole fix. */
+@media (max-width:1180px){
+  .app{grid-template-columns:64px minmax(0,1fr)}
+  html[data-docs="1"] .app{grid-template-columns:64px minmax(0,1fr) 320px}
+  .rail .rlabel{display:none}
+  .rail{align-items:center}
+  .rail .rbrand small{display:none}
+}
+@media (max-width:860px){
+  .app,html[data-docs="1"] .app{
+    grid-template-columns:minmax(0,1fr); grid-template-areas:"top" "main" "docs";}
+  .rail{display:none}
+  html[data-nav="1"] .rail{
+    display:flex; position:fixed; inset:0 auto 0 0; width:236px; z-index:60;
+    box-shadow:24px 0 60px #000a;}
+  html[data-nav="1"] .rail .rlabel{display:inline}
+  .navbtn{display:inline-flex !important}
+}
+
+
+/* ------------------------------------------------------------- docs drawer */
+.docs{
+  grid-area:docs; display:none; border-left:1px solid var(--line);
+  background:var(--bg2); padding:1rem 1.1rem; overflow-y:auto;
+  max-height:100vh; position:sticky; top:0;
+}
+html[data-docs="1"] .docs{display:block}
+.docs h3{margin:.2rem 0 .1rem; font-size:.95rem}
+.docs h4{margin:1.1rem 0 .3rem; font-size:.8rem; color:var(--amber); letter-spacing:.02em}
+.docs p,.docs li{color:var(--ink2); font-size:.83rem; line-height:1.6}
+.docs ul{margin:.3rem 0 .3rem 1.1rem; padding:0}
+.docs code{font-family:var(--mono); font-size:.76rem; background:var(--panel);
+  border:1px solid var(--line); border-radius:4px; padding:.05rem .3rem; color:var(--ink)}
+.docs .dclose{float:right; background:none; border:none; color:var(--ink3); cursor:pointer;
+  font-size:1.1rem; line-height:1}
+.docs .dnote{border-left:2px solid var(--line2); padding-left:.7rem; margin:.7rem 0;
+  color:var(--ink3); font-size:.78rem}
+{% block head_extra %}{% endblock %}
+</style>
+</head>
+<body>
+<a class="sr" href="#main">Skip to content</a>
+<div class="app">
+
+  <nav class="rail" aria-label="Sections">
+    <div class="rbrand"><b>SECOND UNIT</b><small>render farm ops</small></div>
+    {% set nav = [
+      ('overview','/','◱','Overview'),
+      ('investigation','/investigation','◎','Investigation'),
+      ('shots','/shots','▤','Shots'),
+      ('agent','/agent','◈','Agent')
+    ] %}
+    {% for pid, href, icon, label in nav %}
+    <a href="{{ href }}" {% if page_id == pid %}aria-current="page"{% endif %}>
+      <span class="rico" aria-hidden="true">{{ icon }}</span><span class="rlabel">{{ label }}</span>
+    </a>
+    {% endfor %}
+    <div class="rfoot">prototype · synthetic farm<br>no account required</div>
+  </nav>
+
+  <header class="top">
+    <button class="navbtn" id="navBtn" aria-label="Sections">☰</button>
+    <div class="ptitle">
+      <h1>{{ page_title }}</h1>
+      <p>{{ page_sub }}</p>
+    </div>
+    <div class="tspace"></div>
+    <a class="chip" href="/start" title="Change who this is framed for">
+      viewing as <b id="personaName">TD</b> ▾
+    </a>
+    <span class="chip"><span class="dot live" id="freshDot"></span><span id="freshText">live</span></span>
+    <button class="chip" id="docsBtn" aria-expanded="false">? Docs</button>
+  </header>
+
+  <main id="main">
+    <div class="page">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+
+  <aside class="docs" id="docs" aria-label="Documentation">
+    <button class="dclose" id="docsClose" aria-label="Close documentation">×</button>
+    {% block docs %}{% endblock %}
+  </aside>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const PERSONAS = ["td","supervisor","producer"];
+const PKEY = "second-unit:persona";
+const DKEY = "second-unit:docs";
+const LABEL = {td:"TD", supervisor:"Supervisor", producer:"Producer"};
+
+function storedPersona(){ try{ const v=localStorage.getItem(PKEY);
+  return PERSONAS.includes(v)?v:null; }catch(_){ return null; } }
+/* One resolver everywhere: a deliberate ?persona= link wins, then a remembered choice,
+   then whatever the server rendered. Two independent decisions is how the remembered
+   choice got silently overwritten the first time. */
+function resolvePersona(){
+  const asked = new URLSearchParams(location.search).get("persona");
+  if (PERSONAS.includes(asked)) return asked;
+  return storedPersona() || document.documentElement.dataset.persona || "td";
+}
+function applyPersona(p){
+  document.documentElement.dataset.persona = p;
+  const n = $("personaName"); if (n) n.textContent = LABEL[p] || p;
+  document.dispatchEvent(new CustomEvent("persona", {detail:p}));
+}
+applyPersona(resolvePersona());
+
+/* docs drawer: remembered, because an operator who wants explanations wants them on every
+   page, and one who does not should not have to close it repeatedly. */
+function setDocs(open){
+  document.documentElement.dataset.docs = open ? "1" : "0";
+  $("docsBtn").setAttribute("aria-expanded", open ? "true" : "false");
+  try{ localStorage.setItem(DKEY, open ? "1" : "0"); }catch(_){}
+}
+try{ if (localStorage.getItem(DKEY) === "1") setDocs(true); }catch(_){}
+$("docsBtn").addEventListener("click", () =>
+  setDocs(document.documentElement.dataset.docs !== "1"));
+$("docsClose").addEventListener("click", () => setDocs(false));
+$("navBtn").addEventListener("click", () =>
+  document.documentElement.dataset.nav =
+    document.documentElement.dataset.nav === "1" ? "0" : "1");
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape"){ setDocs(false); document.documentElement.dataset.nav = "0"; }
+  /* g-then-key: the shortcut every console has, and it costs nothing */
+  if (e.key === "?" && !/input|textarea/i.test(document.activeElement.tagName)) {
+    setDocs(document.documentElement.dataset.docs !== "1");
+  }
+});
+function esc(s){ return String(s ?? "").replace(/[&<>"']/g,
+  (c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function fresh(state, text){ const d=$("freshDot"), t=$("freshText");
+  if(d) d.className = "dot " + state; if(t) t.textContent = text; }
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

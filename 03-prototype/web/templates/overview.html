@@ -1,0 +1,776 @@
+{% extends "_base.html" %}
+{#
+  Overview — "what needs me?", answered before the fold.
+
+  Four zones, in the order a producer's eye moves: the fleet strip (everything, worst
+  first), the one exception in the reader's own language, the farm's vitals, then the
+  agent's own honesty score. Nothing here calls a model: every number on this page comes
+  from `/api/fleet`, `/api/vitals` and `/api/agent/metrics`, which are Prometheus queries
+  and arithmetic. That is why the page can be polled at all.
+
+  Two rules this page exists to obey:
+    * An empty result NEVER reads as good news. A failed sweep, a metric that returned no
+      series, and a farm with genuinely no work in it are three different states and get
+      three different messages.
+    * A judge arriving mid-repair (the scenario loops every ~4h) must be told the farm is
+      currently healthy and when the next fault lands, not left thinking the demo is dead.
+#}
+
+{% block head_extra %}
+/* Long PromQL in the drawer has to wrap: the base's `.docs code` sets no wrapping and the
+   drawer is 360px wide, so an expression like
+   `sum by (node) (increase(render_node_gpu_ecc_errors_total[30m])) > 0` ran past the edge
+   and was clipped. Page CSS is appended last inside the base stylesheet, so scoping the fix
+   here needs no change to _base.html. */
+.docs code{overflow-wrap:anywhere}
+
+/* ------------------------------------------- base-layout workaround (≤860px)
+   `_base.html` intends to hide the rail below 860px, but its
+   `@media (max-width:860px){ .rail{display:none} }` sits ABOVE the later
+   `.rail{display:flex; …}` component rule, and a media query adds no specificity — so the
+   component rule wins, the rail keeps `display:flex`, loses its named grid area (the
+   ≤860 areas are "top"/"main"/"docs") and becomes an implicit grid item. Measured at
+   390px: `main` gets 215px and the rail sits in a 174px implicit column on the right.
+   Re-stating the rule here fixes it for this page only, because page CSS is appended last
+   inside the base stylesheet. `html[data-nav="1"] .rail` is more specific, so the ☰
+   overlay still opens. The proper fix is a source-order change in _base.html, which is
+   outside the two files this task may edit and is reported rather than made. */
+@media (max-width:860px){ .rail{display:none} }
+
+/* ------------------------------------------------------------------ notices
+   Banners for the states that must never be silent: a failed sweep, an empty sweep, a
+   placeholder deadline. Styled loud on purpose — every forecast below depends on them. */
+.note{display:flex; gap:.6rem; align-items:flex-start; padding:.7rem .85rem; margin:0 0 .6rem;
+  border-radius:8px; border:1px solid var(--line2); background:var(--panel);
+  font-size:.84rem; color:var(--ink2)}
+.note b{color:var(--ink); font-weight:650}
+.note .gl{flex:0 0 1rem; text-align:center; font-size:.95rem; line-height:1.35}
+.note.bad{border-color:var(--crit); background:color-mix(in srgb, var(--crit-dim) 55%, var(--panel))}
+.note.bad .gl{color:var(--crit)}
+.note.warn{border-color:var(--amber); background:color-mix(in srgb, var(--amber-dim) 30%, var(--panel))}
+.note.warn .gl{color:var(--amber)}
+.note.ok{border-color:var(--line2)}
+.note.ok .gl{color:var(--ok)}
+.note code{font-family:var(--mono); font-size:.76rem; color:var(--ink)}
+
+/* --------------------------------------------------------------- fleet strip
+   Rows, not a <table>: the cells reflow to one column on a phone and a table cannot.
+   Labels live inside each cell rather than in a header row, so a row stays readable at
+   any width and there is no header to fall out of sync with the data. */
+.fwrap{display:flex; flex-direction:column; gap:.4rem}
+.frow{
+  display:grid; gap:.35rem .9rem; align-items:center;
+  grid-template-columns:minmax(120px,1.35fr) 104px repeat(4, minmax(72px,1fr));
+  background:var(--panel); border:1px solid var(--line); border-left:4px solid var(--line2);
+  border-radius:8px; padding:.6rem .8rem;
+}
+.frow .who{min-width:0}
+.frow .shot{font-weight:650; letter-spacing:-.01em}
+.frow .dept{display:block; color:var(--ink3); font-size:.72rem; text-transform:uppercase;
+  letter-spacing:.07em}
+.cell{min-width:0}
+.cell .k{display:block; color:var(--ink3); font-size:.62rem; text-transform:uppercase;
+  letter-spacing:.08em}
+.cell .v{font-family:var(--mono); font-size:.84rem; color:var(--ink); overflow-wrap:anywhere}
+.cell .v.slipbad{color:var(--crit); font-weight:600}
+.frow .note-line{grid-column:1/-1; color:var(--ink3); font-size:.76rem}
+
+/* Status is carried three ways at once — left border, pill colour, glyph — because a
+   producer scanning this strip should not have to read a word to find the fire. */
+.frow[data-s="critical"]{border-left-color:var(--crit); background:color-mix(in srgb, var(--crit-dim) 22%, var(--panel))}
+.frow[data-s="at_risk"]{border-left-color:var(--amber)}
+.frow[data-s="unknown"]{border-left-color:var(--violet)}
+.frow[data-s="on_track"]{border-left-color:var(--ok)}
+.frow[data-s="done"]{border-left-color:var(--line2); opacity:.78}
+.pill{display:inline-flex; align-items:center; gap:.32rem; padding:.16rem .5rem;
+  border-radius:999px; font-size:.7rem; font-weight:650; letter-spacing:.04em;
+  text-transform:uppercase; border:1px solid var(--line2); color:var(--ink2);
+  background:var(--panel2); white-space:nowrap}
+.pill[data-s="critical"]{color:#ffd9d6; background:var(--crit-dim); border-color:var(--crit)}
+.pill[data-s="at_risk"]{color:#ffe6bd; background:var(--amber-dim); border-color:var(--amber)}
+.pill[data-s="on_track"]{color:#c8f0cf; background:var(--ok-dim); border-color:var(--ok)}
+.pill[data-s="unknown"]{color:#ddd2ff; border-color:var(--violet)}
+.pill[data-s="done"]{color:var(--ink3)}
+.skel{color:var(--ink3); font-family:var(--mono); font-size:.8rem; display:block}
+.foot{font-size:.76rem; margin:.55rem 0 0}
+.foot code{font-family:var(--mono); font-size:.74rem}
+
+@media (max-width:820px){
+  /* Two columns of metrics rather than four: at this width four monospace numbers
+     collide, and a collided number is worse than a taller row. The shot and its pill
+     are pinned to the first line so the row still reads top-down. */
+  .frow{grid-template-columns:repeat(2,minmax(0,1fr)); row-gap:.5rem}
+  .frow .who{grid-column:1}
+  .frow .pill{grid-column:2; justify-self:start}
+}
+
+/* ------------------------------------------------------------ incident card */
+.inc{border-left:4px solid var(--line2)}
+.inc[data-sev="critical"]{border-left-color:var(--crit)}
+.inc[data-sev="at_risk"]{border-left-color:var(--amber)}
+.inc[data-sev="clear"]{border-left-color:var(--ok)}
+.inc h3{margin:.5rem 0 .35rem; font-size:1.24rem; line-height:1.25; letter-spacing:-.015em}
+.inc .isub{margin:0 0 .7rem; color:var(--ink2); font-size:.92rem; max-width:62ch}
+.ifacts{list-style:none; margin:0 0 .9rem; padding:0; display:grid; gap:.3rem .9rem;
+  grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (max-width:640px){ .ifacts{grid-template-columns:minmax(0,1fr)} }
+.ifacts li{display:flex; gap:.5rem; font-size:.83rem; min-width:0}
+.ifacts .k{color:var(--ink3); flex:0 0 9.5rem}
+.ifacts .v{font-family:var(--mono); color:var(--ink); overflow-wrap:anywhere; min-width:0}
+@media (max-width:640px){
+  /* Label beside value needs ~9.5rem for the label and the rest for a PromQL expression;
+     under 640px that leaves the value a couple of characters wide and a query renders as
+     a vertical ribbon of letters. Stack instead. */
+  .ifacts li{flex-direction:column; gap:.05rem}
+  .ifacts .k{flex:0 0 auto}
+}
+.iact{display:flex; align-items:center; gap:.75rem; flex-wrap:wrap}
+.iact .hint{color:var(--ink3); font-size:.78rem}
+
+/* ---------------------------------------------------------------- kpi tiles */
+.kpi .k{display:block; color:var(--ink3); font-size:.66rem; text-transform:uppercase;
+  letter-spacing:.09em; margin-bottom:.3rem}
+.kpi .v{display:block; font-size:1.5rem; font-weight:650; letter-spacing:-.02em;
+  line-height:1.1; overflow-wrap:anywhere}
+.kpi .u{font-size:.76rem; color:var(--ink3); font-weight:400}
+.kpi .s{display:block; color:var(--ink3); font-size:.75rem; margin-top:.25rem}
+.kpi .v.bad{color:var(--crit)}
+.kpi .v.ok{color:var(--ok)}
+.kpi .v.na{color:var(--ink3); font-size:1rem; font-weight:500}
+
+/* --------------------------------------------------------------- agent health */
+.claims{display:grid; gap:.5rem; grid-template-columns:repeat(4,minmax(0,1fr)); margin:.7rem 0 0}
+@media (max-width:700px){ .claims{grid-template-columns:repeat(2,minmax(0,1fr))} }
+.claim{border:1px solid var(--line); border-radius:8px; padding:.55rem .65rem; background:var(--bg2)}
+.claim .cn{display:block; font-family:var(--mono); font-size:1.25rem; line-height:1.2}
+.claim .cl{display:block; font-size:.7rem; color:var(--ink3); text-transform:uppercase;
+  letter-spacing:.06em}
+.claim .cd{display:block; font-size:.73rem; color:var(--ink3); margin-top:.2rem}
+/* false_success is the number this project earned; when it is non-zero it gets the loudest
+   treatment on the page, and it is never collapsed or hidden behind a link. */
+.claim.alarm{border-color:var(--crit); background:color-mix(in srgb, var(--crit-dim) 45%, var(--bg2))}
+.claim.alarm .cn{color:var(--crit); font-weight:700}
+.claim.zero .cn{color:var(--ok)}
+.arow{display:flex; align-items:baseline; gap:.6rem; flex-wrap:wrap}
+.arow .big{font-family:var(--mono); font-size:1.35rem}
+{% endblock %}
+
+{% block content %}
+
+<!-- ======================================================= 1. FLEET TRIAGE -->
+<section class="sect" id="secFleet">
+  <h2>Fleet triage · every shot in flight</h2>
+  <div id="fleetNotes"></div>
+  <div class="fwrap" id="fleetRows">
+    <span class="skel">sweeping the farm…</span>
+  </div>
+  <p class="dim foot">
+    One Prometheus query per series, arithmetic in Python (<code>fleet.py</code>) — no model
+    is involved, so this strip cannot invent a shot or an ETA. Exceptions are sorted first
+    by the server. Refreshed every 20s.
+  </p>
+</section>
+
+<!-- ==================================================== 2. ACTIVE INCIDENT -->
+<section class="sect">
+  <h2>Active incident · framed for <span id="incWho">you</span></h2>
+  <div class="card inc" id="incCard" data-sev="none">
+    <div class="arow">
+      <span class="pill" id="incPill" data-s="unknown">reading</span>
+      <span class="dim mono" id="incMeta">waiting for the first sweep</span>
+    </div>
+    <h3 id="incHead">Reading the farm…</h3>
+    <p class="isub" id="incSub"></p>
+    <ul class="ifacts" id="incFacts"></ul>
+    <div class="iact">
+      <a class="btn primary" href="/investigation" id="incBtn">Investigate this shot</a>
+      <span class="hint" id="incHint"></span>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================== 3. FARM VITALS -->
+<section class="sect">
+  <h2>Farm vitals</h2>
+  <div id="cycleNote"></div>
+  <div class="grid g4">
+    <div class="card kpi"><span class="k">Throughput now</span>
+      <span class="v" id="vThr">—</span><span class="s">frames/min, 15m rate, whole farm</span></div>
+    <div class="card kpi"><span class="k">Lighting queue</span>
+      <span class="v" id="vQueue">—</span><span class="s" id="vQueueSub">frames waiting</span></div>
+    <div class="card kpi"><span class="k">Nodes with faults</span>
+      <span class="v" id="vFaulty">—</span><span class="s" id="vFaultySub">GPU ECC errors, last 30m</span></div>
+    <div class="card kpi"><span class="k">Hottest GPU</span>
+      <span class="v" id="vHot">—</span><span class="s" id="vHotSub">topk(1) by temperature</span></div>
+  </div>
+</section>
+
+<!-- ======================================================== 4. AGENT HEALTH -->
+<section class="sect">
+  <h2>Agent health · does its own reporting hold up?</h2>
+  <div class="card">
+    <div class="arow">
+      <span class="big" id="aCalls">—</span>
+      <span class="dim">MCP tool calls recorded<span id="aCallsBy"></span></span>
+    </div>
+    <div id="aNotes"></div>
+    <div class="claims" id="aClaims"></div>
+    <div class="iact" style="margin-top:.9rem">
+      <a class="btn" href="/agent">Open agent telemetry</a>
+      <span class="hint">Write claims are verified against the stack after the run, not
+        taken from the agent's own summary.</span>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block docs %}
+<h3>Overview</h3>
+<p>The triage view: every shot in flight, the one exception in your own language, the farm's
+current vitals, and whether the agent's last run told the truth about what it wrote.</p>
+
+<h4>Fleet triage strip</h4>
+<p><code>GET /api/fleet</code>. Each row is one shot with a live series in Prometheus. The
+sweep is plain Python over two instant queries — <code>shot_frames_remaining</code> and
+<code>sum by (shot) (rate(render_frames_completed_total[15m])) * 60</code> — then division:
+<code>frames ÷ rate</code> gives an ETA, and the ETA minus the published review deadline
+gives the slip. No language model is in that path, so the strip cannot hallucinate a shot,
+invent an ETA, or disagree with itself between refreshes.</p>
+<ul>
+  <li><b>critical</b> — forecast more than 1h past the deadline</li>
+  <li><b>at risk</b> — forecast past the deadline at all</li>
+  <li><b>on track</b> — forecast to land before it</li>
+  <li><b>done</b> — zero frames remaining on that pass</li>
+  <li><b>unknown</b> — frames remain but nothing completed in the last 15m: stalled, or the
+      metric stopped arriving. Deliberately not called "on track".</li>
+</ul>
+<p class="dnote">An empty strip is never rendered as calm. If the sweep failed, the reason
+from <code>fleet.last_error</code> is printed here instead; if it succeeded and returned
+nothing, that is stated as "no shots in flight" — which for this farm most likely means the
+seeder stopped.</p>
+<p class="dnote">If the review deadline could not be read from
+<code>shot_review_deadline_seconds</code>, the API says so via
+<code>deadline_is_placeholder</code> and a warning appears above the strip. Every ETA and
+slip on this page is then measured against a made-up deadline and none of them are
+schedule facts.</p>
+
+<h4>Active incident</h4>
+<p>The worst exception from the same <code>/api/fleet</code> payload — no second data
+source, so the card and the strip cannot contradict each other. The wording changes with
+the persona in the top bar: a Producer gets the schedule consequence and no PromQL, a
+Supervisor gets the shot and the cause, a Pipeline TD gets nodes, rates and the exact
+queries. The finding underneath is identical; only the framing differs.</p>
+<p>When no shot is an exception, the card says so and explains where the looping scenario
+currently is, rather than showing an empty box.</p>
+
+<h4>Farm vitals</h4>
+<p><code>GET /api/vitals</code>, one instant query per number:</p>
+<ul>
+  <li><b>Throughput</b> — <code>sum(rate(render_frames_completed_total[15m])) * 60</code></li>
+  <li><b>Lighting queue</b> — <code>render_queue_depth{queue="lighting"}</code>; ~18 is
+      this farm's healthy depth</li>
+  <li><b>Nodes with faults</b> —
+      <code>sum by (node) (increase(render_node_gpu_ecc_errors_total[30m])) &gt; 0</code>.
+      Uncorrectable ECC is the injected fault, so an empty list here is a real signal</li>
+  <li><b>Hottest GPU</b> — <code>topk(1, render_node_gpu_temp_celsius)</code>; context, not
+      an alert</li>
+</ul>
+<p><b>Cycle phase</b> is derived from the deadline metric, not from a wall clock: the demo
+farm replays a ~4h incident loop. During <code>repaired</code>, <code>restarting</code> and
+<code>pre-fault</code> the farm is genuinely healthy and the banner says when the next fault
+lands. A calm farm mid-loop is the scenario working, not the product failing.</p>
+
+<h4>Agent health</h4>
+<p><code>GET /api/agent/metrics</code>, read back out of the same Prometheus the farm writes
+to — not from memory in this process — so these numbers are the ones in Grafana and this
+page cannot flatter the agent.</p>
+<ul>
+  <li><b>confirmed</b> — the agent claimed a write and verification found it in the stack</li>
+  <li><b>honest failure</b> — the write failed and the agent said it failed</li>
+  <li><b>unchecked</b> — no independent check was possible for that item</li>
+  <li><b>false success</b> — the agent <em>reported</em> a write that verification could
+      not find. The one number worth paging on.</li>
+</ul>
+<p class="dnote">These are instant queries. If the agent has not run inside Prometheus's
+retention window the series are empty, and this section says "no run in the window" rather
+than showing zeroes — zero false successes and no data are not the same claim.</p>
+
+<h4>Freshness and polling</h4>
+<p>The fleet and vitals calls run every 20 seconds and no faster; each one hits Prometheus
+through Grafana's datasource proxy. Agent metrics refresh every 60s. Polling pauses while
+the tab is hidden and resumes on return. The dot in the top bar is green after a clean
+sweep, amber when something is degraded or a deadline is a placeholder, and red when a call
+failed — with the reason on the page, never only in the console.</p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+"use strict";
+/* ==========================================================================
+   Overview client. Vanilla, no build, no framework — same constraint as the rest of
+   the prototype. Three fetches, four render functions, one 20s tick.
+
+   Every value that reaches the DOM goes through esc() from the base layout: it arrives
+   from a live Prometheus over the network and is not ours to trust.
+   ========================================================================== */
+
+/* The Investigation page replays a recorded run of this shot. Naming it here keeps the
+   primary action honest: for any other shot the button opens the investigation surface,
+   it does not claim a per-shot run that the prototype does not have. */
+const RECORDED_SHOT = "SH042";
+const POLL_MS = 20000;        // fleet + vitals: these hit Prometheus, so no faster
+const AGENT_POLL_MS = 60000;  // agent telemetry changes only when a run happens
+
+const S = {fleet:null, fleetErr:null, vitals:null, vitalsErr:null,
+           agent:null, agentErr:null, lastPoll:0};
+
+/* ------------------------------------------------------------- formatting */
+const num = (n) => Number(n).toLocaleString("en-US");
+function fmtHours(h){
+  /* Slip is signed hours as a float. Producers read "2h 18m", not "2.31". */
+  if (h === null || h === undefined || isNaN(h)) return "—";
+  const mins = Math.round(Math.abs(h) * 60);
+  const s = mins >= 60 ? Math.floor(mins/60) + "h " + String(mins%60).padStart(2,"0") + "m"
+                       : mins + "m";
+  return (h < 0 ? "-" : "") + s;
+}
+function fmtClock(iso){
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return String(iso);   // never swallow a shape we did not expect
+  return d.toLocaleString([], {weekday:"short", hour:"2-digit", minute:"2-digit"});
+}
+const STATUS_TEXT = {critical:"critical", at_risk:"at risk", on_track:"on track",
+                     done:"done", unknown:"unknown"};
+const STATUS_GLYPH = {critical:"▲", at_risk:"▲", on_track:"●", done:"✓", unknown:"?"};
+function pill(status){
+  const s = STATUS_TEXT[status] ? status : "unknown";
+  return '<span class="pill" data-s="' + s + '">' + STATUS_GLYPH[s] + " " +
+         esc(STATUS_TEXT[s]) + "</span>";
+}
+function note(kind, glyph, html){
+  return '<div class="note ' + kind + '"><span class="gl" aria-hidden="true">' + glyph +
+         '</span><div>' + html + '</div></div>';
+}
+
+/* ------------------------------------------------------------ fleet strip */
+function renderFleet(){
+  const box = $("fleetRows"), notes = $("fleetNotes");
+  if (S.fleetErr){
+    notes.innerHTML = note("bad","✗",
+      "<b>Fleet sweep failed.</b> " + esc(S.fleetErr) +
+      "<br>Nothing below this line is a current reading of the farm.");
+    box.innerHTML = '<span class="skel">no rows — the sweep did not complete</span>';
+    return;
+  }
+  const f = S.fleet;
+  if (!f){ return; }                                   // first paint keeps the skeleton
+
+  let head = "";
+  /* Order matters: the placeholder-deadline warning goes FIRST, because it invalidates
+     every ETA and slip in the rows beneath it. */
+  if (f.deadline_is_placeholder){
+    head += note("warn","⚠",
+      "<b>The review deadline is a placeholder.</b> " +
+      esc(f.deadline_placeholder_reason || "reason not reported") +
+      "<br>Every ETA, slip and status below is measured against a made-up deadline of " +
+      "<code>" + esc(f.deadline || "unknown") + "</code>. Treat them as arithmetic, not " +
+      "as schedule facts.");
+  }
+  if (f.error){
+    /* The API reports shots AND an error when the sweep partially worked. Say both. */
+    head += note("bad","✗", "<b>The sweep reported a problem.</b> " + esc(f.error));
+  }
+  const shots = Array.isArray(f.shots) ? f.shots : [];
+  if (!shots.length && !f.error){
+    head += note("bad","✗",
+      "<b>No shots in flight.</b> The sweep succeeded and returned nothing — for this farm " +
+      "that means <code>shot_frames_remaining</code> has no series, i.e. the seeder is not " +
+      "running. This is not a farm with no work in it.");
+  }
+  if (shots.length && !f.error && !f.deadline_is_placeholder){
+    const ex = (f.exceptions || []).length;
+    /* The ISO string with its offset is exact but unreadable at a glance; it stays in the
+       title attribute so a TD can still get the precise value. */
+    const dl = '<span title="' + esc(f.deadline || "") + '">' +
+               esc(fmtClock(f.deadline)) + "</span>";
+    head += note(ex ? "warn" : "ok", ex ? "⚠" : "✓",
+      ex ? "<b>" + ex + " shot" + (ex>1?"s":"") + " forecast to miss the review deadline</b> " +
+           "of " + dl + ". Exceptions are listed first."
+         : "<b>All " + shots.length + " shots are clear of the review deadline</b> (" +
+           dl + ").");
+  }
+  notes.innerHTML = head;
+
+  box.innerHTML = shots.map((s) => {
+    const st = STATUS_TEXT[s.status] ? s.status : "unknown";
+    const slipBad = typeof s.slip_hours === "number" && s.slip_hours > 0;
+    const cells = [
+      ["frames left", s.frames_remaining === null || s.frames_remaining === undefined
+        ? "—" : num(s.frames_remaining), ""],
+      ["rate", (typeof s.rate_per_min === "number" && s.rate_per_min > 0)
+        ? s.rate_per_min.toFixed(1) + " fr/min" : "—", ""],
+      ["eta", fmtClock(s.eta), ""],
+      ["slip", fmtHours(s.slip_hours), slipBad ? "slipbad" : ""],
+    ].map(([k,v,cls]) =>
+      '<span class="cell"><span class="k">' + k + '</span><span class="v ' + cls + '">' +
+      esc(v) + "</span></span>").join("");
+    return '<div class="frow" data-s="' + st + '">' +
+      '<span class="who"><span class="shot">' + esc(s.shot) + '</span>' +
+      '<span class="dept">' + esc(s.department || "—") + "</span></span>" +
+      pill(st) + cells +
+      (s.note ? '<span class="note-line">' + esc(s.note) + "</span>" : "") +
+      "</div>";
+  }).join("") || '<span class="skel">no rows to show</span>';
+}
+
+/* ----------------------------------------------------- the incident, framed
+   One source (the fleet payload) rendered three ways. The facts are identical; what
+   changes is which of them a given reader can act on. A producer cannot act on a PromQL
+   expression, so they do not get one — that is the whole thesis of the persona switch. */
+function worstException(){
+  const shots = (S.fleet && S.fleet.shots) || [];
+  return shots.find((s) => s.status === "critical" || s.status === "at_risk") || null;
+}
+function renderIncident(){
+  const persona = document.documentElement.dataset.persona || "td";
+  $("incWho").textContent = {td:"a pipeline TD", supervisor:"a VFX supervisor",
+                             producer:"a producer"}[persona] || "you";
+  const head = $("incHead"), sub = $("incSub"), facts = $("incFacts"),
+        card = $("incCard"), p = $("incPill"), meta = $("incMeta"),
+        btn = $("incBtn"), hint = $("incHint");
+
+  if (S.fleetErr || !S.fleet){
+    card.dataset.sev = "none";
+    p.dataset.s = "unknown"; p.textContent = "no reading";
+    meta.textContent = S.fleetErr ? "fleet sweep failed" : "waiting for the first sweep";
+    head.textContent = S.fleetErr ? "The farm could not be read"
+                                  : "Reading the farm…";
+    sub.textContent = S.fleetErr
+      ? "Until the sweep succeeds there is no honest way to say whether anything needs you."
+      : "";
+    facts.innerHTML = "";
+    btn.textContent = "Open the recorded investigation";
+    hint.textContent = S.fleetErr ? "The recorded run still works and is fully readable." : "";
+    return;
+  }
+
+  const s = worstException();
+  const v = S.vitals || {};
+  const faulty = Array.isArray(v.faulty_nodes) ? v.faulty_nodes.filter(Boolean) : [];
+  const dl = S.fleet.deadline;
+  const placeholder = !!S.fleet.deadline_is_placeholder;
+
+  if (!s){
+    /* No exception. This is the state a mid-repair judge lands in, so it explains the
+       loop rather than just saying "all good" — a demo that looks idle reads as broken. */
+    const shots = S.fleet.shots || [];
+    const done = shots.filter((x) => x.status === "done").length;
+    const track = shots.filter((x) => x.status === "on_track").length;
+    const unk = shots.filter((x) => x.status === "unknown").length;
+    card.dataset.sev = "clear";
+    p.dataset.s = "on_track"; p.textContent = "● no exception";
+    const cyc = cyclePhrase(v);
+    meta.textContent = cyc.meta;
+    head.textContent = "Nothing is forecast to miss the review deadline";
+    sub.textContent = cyc.sentence +
+      (unk ? " " + unk + " shot" + (unk>1?"s":"") + " report no recent completions and are" +
+             " listed as unknown, not as on track." : "");
+    facts.innerHTML = factList([
+      ["Shots in flight", shots.length + " (" + done + " done, " + track + " on track" +
+                          (unk ? ", " + unk + " unknown" : "") + ")"],
+      ["Review deadline", (dl || "—") + (placeholder ? " (placeholder)" : "")],
+      ["Throughput now", v.throughput_now == null ? "—"
+        : v.throughput_now.toFixed(1) + " fr/min"],
+      ["Nodes with faults", faulty.length ? faulty.join(", ") : "none in the last 30m"],
+    ]);
+    btn.textContent = "Open the recorded investigation";
+    hint.textContent = "The recorded run of the SH042 slip is always available.";
+    return;
+  }
+
+  card.dataset.sev = s.status === "critical" ? "critical" : "at_risk";
+  p.dataset.s = s.status;
+  p.textContent = STATUS_GLYPH[s.status] + " " + STATUS_TEXT[s.status];
+  /* textContent, so no escaping: esc() here would print the entities literally. */
+  meta.textContent = s.shot + " · " + (s.department || "—") +
+    (placeholder ? " · deadline is a placeholder" : "");
+  btn.textContent = s.shot === RECORDED_SHOT ? "Investigate " + s.shot
+                                            : "Open investigation";
+
+  const slip = fmtHours(s.slip_hours);
+  const rate = (typeof s.rate_per_min === "number" && s.rate_per_min > 0)
+    ? s.rate_per_min.toFixed(1) + " fr/min" : "no completions in 15m";
+  const nodeLine = faulty.length
+    ? faulty.join(", ") + " throwing uncorrectable GPU ECC errors"
+    : "no node is currently reporting ECC errors";
+
+  if (persona === "producer"){
+    /* Plain language, schedule consequence, no metric names and no PromQL. */
+    head.textContent = s.shot + " misses the " + fmtClock(dl) + " review by about " + slip;
+    sub.textContent = "The pass is behind and, at the speed it is currently going, lands " +
+      slip + " late. " + (faulty.length
+        ? "The cause looks like one faulty render machine, which is fixable now."
+        : "The farm is not reporting a hardware fault, so the shortfall is capacity, not a broken node.") +
+      " Investigating gives you a fix to approve or decline.";
+    facts.innerHTML = factList([
+      ["Review is at", fmtClock(dl) + (placeholder ? " — placeholder, not a real deadline" : "")],
+      ["Forecast delivery", fmtClock(s.eta)],
+      ["Late by", slip],
+      ["Work left", (s.frames_remaining != null ? num(s.frames_remaining) + " frames" : "—")],
+    ]);
+    hint.textContent = "Nothing is written to the production stack without your approval.";
+  } else if (persona === "supervisor"){
+    head.textContent = s.shot + "'s " + (s.department || "") +
+      " pass is " + slip + " behind its review deadline";
+    sub.textContent = num(s.frames_remaining || 0) + " frames still to render at " + rate +
+      ", forecast " + fmtClock(s.eta) + " against a " + fmtClock(dl) + " review. " +
+      (faulty.length ? "One node is the cause — " + nodeLine + " — so this is not a problem with the shot or the lighting setup."
+                     : "No single node is faulted, so this is a capacity shortfall rather than one broken machine.");
+    facts.innerHTML = factList([
+      ["Shot / department", s.shot + " · " + (s.department || "—")],
+      ["Frames remaining", s.frames_remaining != null ? num(s.frames_remaining) : "—"],
+      ["Completion rate", rate],
+      ["ETA vs deadline", fmtClock(s.eta) + " vs " + fmtClock(dl)],
+      ["Slip", slip],
+      ["Suspect nodes", faulty.length ? faulty.join(", ") : "none"],
+    ]);
+    hint.textContent = "The investigation names the fix and its trade-off before anything runs.";
+  } else {
+    head.textContent = s.shot + " " + (s.department || "") + ": ETA " + fmtClock(s.eta) +
+      " vs deadline " + fmtClock(dl) + " — slip " + slip;
+    sub.textContent = num(s.frames_remaining || 0) + " frames remaining at " + rate +
+      ". Farm throughput " + (v.throughput_now == null ? "unread" : v.throughput_now.toFixed(1) + " fr/min") +
+      ", lighting queue " + (v.queue_lighting == null ? "unread" : v.queue_lighting) +
+      ". " + nodeLine + ".";
+    facts.innerHTML = factList([
+      ["Status", STATUS_TEXT[s.status] || s.status],
+      ["Frames / rate", (s.frames_remaining != null ? num(s.frames_remaining) : "—") + " @ " + rate],
+      ["ETA / deadline", (s.eta || "—") + " / " + (dl || "—")],
+      ["Slip (hours)", s.slip_hours == null ? "—" : String(s.slip_hours)],
+      ["ECC in 30m", "sum by (node) (increase(render_node_gpu_ecc_errors_total[30m])) > 0 → " +
+                     (faulty.length ? faulty.join(", ") : "∅")],
+      ["Rate query", "sum by (shot) (rate(render_frames_completed_total[15m])) * 60"],
+    ]);
+    hint.textContent = "Evidence panel carries the exact PromQL and LogQL, with Grafana " +
+      "deeplinks." + (s.shot === RECORDED_SHOT ? ""
+        : " The investigation surface currently replays the recorded " + RECORDED_SHOT + " run.");
+  }
+}
+function factList(pairs){
+  return pairs.map(([k,v]) =>
+    '<li><span class="k">' + esc(k) + '</span><span class="v">' + esc(v) + "</span></li>"
+  ).join("");
+}
+
+/* --------------------------------------------------------------- farm vitals
+   The scenario loops on a ~4h clock, and `cycle_phase` is the API telling us where in the
+   loop we are. Translating it is not decoration: a judge who arrives at minute 200 sees a
+   healthy farm, and without this banner concludes the product does not work. */
+const CYCLE_TOTAL_MIN = 240;
+function cyclePhrase(v){
+  const phase = v && v.cycle_phase, min = v && v.cycle_minute;
+  if (!phase) return {kind:"ok", meta:"cycle phase unread",
+    sentence:"The farm currently reports no shot past its deadline."};
+  const healthy = ["repaired","restarting","pre-fault"].includes(phase);
+  let until = null;
+  if (typeof min === "number"){
+    /* pre-fault sits at a negative minute; repaired/restarting are past the incident and
+       wrap at the loop length. Both resolve to "minutes until the next fault". */
+    until = min < 0 ? Math.round(-min) : Math.round(CYCLE_TOTAL_MIN - min);
+    if (until < 0) until = null;
+  }
+  const when = until === null ? "shortly"
+    : until <= 1 ? "within a minute" : "in about " + until + " min";
+  if (healthy){
+    return {kind:"ok", healthy:true,
+      meta:"cycle phase: " + phase + (typeof min === "number" ? " · minute " + min : ""),
+      sentence:"The farm is healthy right now — this scenario replays a ~4h incident loop " +
+               "and it is currently in the “" + phase + "” phase. The next GPU " +
+               "fault is injected " + when + ", after which a shot starts slipping again."};
+  }
+  return {kind:"warn", healthy:false,
+    meta:"cycle phase: " + phase + (typeof min === "number" ? " · minute " + min : ""),
+    sentence:"The scenario is in its “" + phase + "” phase: the injected fault " +
+             "is live and the effect should be visible in the strip above."};
+}
+function renderVitals(){
+  const box = $("cycleNote");
+  if (S.vitalsErr){
+    box.innerHTML = note("bad","✗", "<b>Vitals unavailable.</b> " + esc(S.vitalsErr) +
+      " The four numbers below are not current.");
+    ["vThr","vQueue","vFaulty","vHot"].forEach((id) => {
+      $(id).textContent = "unread"; $(id).className = "v na"; });
+    return;
+  }
+  const v = S.vitals; if (!v) return;
+
+  const c = cyclePhrase(v);
+  box.innerHTML = note(c.kind, c.healthy ? "✓" : "⚠",
+    "<b>" + esc(c.meta) + ".</b> " + esc(c.sentence)) +
+    (v.error ? note("bad","✗", "<b>Vitals query reported:</b> " + esc(v.error)) : "");
+
+  setKpi("vThr", v.throughput_now == null ? null : v.throughput_now.toFixed(1),
+         "fr/min", v.throughput_now != null && v.throughput_now < 8 ? "bad" : "");
+  /* 18 is this farm's healthy lighting depth (see the seeder); 40+ means frames are
+     piling up faster than the pool clears them. */
+  setKpi("vQueue", v.queue_lighting == null ? null : num(v.queue_lighting), "",
+         v.queue_lighting != null && v.queue_lighting > 40 ? "bad" : "");
+  $("vQueueSub").textContent = v.queue_lighting == null
+    ? "render_queue_depth returned no series" : "frames waiting · ~18 is healthy here";
+
+  const faulty = Array.isArray(v.faulty_nodes) ? v.faulty_nodes.filter(Boolean) : [];
+  const fEl = $("vFaulty");
+  fEl.className = "v " + (faulty.length ? "bad" : "ok");
+  fEl.textContent = faulty.length ? String(faulty.length) : "0";
+  $("vFaultySub").textContent = faulty.length
+    ? faulty.join(", ") + " · uncorrectable GPU ECC, last 30m"
+    : "no ECC errors in the last 30m";
+
+  const hot = v.hottest_node;
+  setKpi("vHot", hot ? hot.celsius : null, "°C",
+         hot && hot.celsius >= 85 ? "bad" : "");
+  $("vHotSub").textContent = hot ? hot.node + " · topk(1) by temperature"
+                                 : "no temperature series returned";
+}
+function setKpi(id, value, unit, cls){
+  const el = $(id);
+  if (value === null || value === undefined){
+    el.className = "v na"; el.textContent = "unread"; return;
+  }
+  el.className = "v " + (cls || "");
+  el.innerHTML = esc(String(value)) + (unit ? '<span class="u"> ' + esc(unit) + "</span>" : "");
+}
+
+/* -------------------------------------------------------------- agent health */
+const CLAIM_ORDER = [
+  ["confirmed",      "confirmed",      "verification found the write in the stack"],
+  ["honest_failure", "honest failure", "the write failed and the agent said so"],
+  ["unchecked",      "unchecked",      "no independent check was possible"],
+  ["false_success",  "false success",  "reported as written, not found afterwards"],
+];
+function renderAgent(){
+  const notes = $("aNotes"), claims = $("aClaims");
+  if (S.agentErr){
+    $("aCalls").textContent = "—"; $("aCallsBy").textContent = "";
+    notes.innerHTML = note("bad","✗", "<b>Agent telemetry unavailable.</b> " + esc(S.agentErr));
+    claims.innerHTML = ""; return;
+  }
+  const a = S.agent; if (!a) return;
+
+  const calls = Array.isArray(a.tool_calls) ? a.tool_calls : [];
+  /* One sample per stage, and the counter is already cumulative for the run, so the total
+     is the sum across stages rather than a rate. */
+  const total = calls.reduce((n, r) => n + (Number(r.value) || 0), 0);
+  /* With no series the label has to carry the meaning: "— MCP tool calls recorded" reads
+     as a broken widget, "no tool calls in the window" reads as a fact. */
+  $("aCalls").textContent = calls.length ? num(Math.round(total)) : "none";
+  $("aCallsBy").textContent = calls.length
+    ? " across " + calls.length + " stage" + (calls.length > 1 ? "s" : "")
+    : " in the retention window";
+
+  const wc = Array.isArray(a.write_claims) ? a.write_claims : [];
+  const by = {};
+  wc.forEach((r) => {
+    const k = (r.labels && r.labels.outcome) || "unlabelled";
+    by[k] = (by[k] || 0) + (Number(r.value) || 0);
+  });
+
+  if (!wc.length && !calls.length){
+    /* Empty series is NOT "the agent behaved perfectly". Instant queries only see the
+       retention window, so say what is actually true: no run in it. */
+    notes.innerHTML = note("warn","⚠",
+      "<b>No agent run inside Prometheus's window.</b> These are instant queries against " +
+      "<code>second_unit_*</code>; with no recent run there is nothing to read. Zero false " +
+      "successes and no data are different claims, so no zeroes are shown. " +
+      "The recorded run on <a href=\"/investigation\">Investigation</a> is unaffected.");
+    claims.innerHTML = ""; return;
+  }
+
+  const bad = Number(by.false_success || 0);
+  notes.innerHTML = bad > 0
+    ? note("bad","‼",
+        "<b>" + num(bad) + " write claim" + (bad>1?"s":"") + " did not survive verification.</b> " +
+        "The agent reported the write as done and an independent read of the stack could " +
+        "not find it. This is the number to page on, and it is shown here rather than " +
+        "buried on the agent page.")
+    : note("ok","✓",
+        "<b>No false successes recorded.</b> Every write the agent claimed in this window " +
+        "was either found in the stack or reported as failed.");
+
+  claims.innerHTML = CLAIM_ORDER.map(([key, label, desc]) => {
+    const n = by[key];
+    const has = n !== undefined;
+    const cls = key === "false_success"
+      ? (Number(n || 0) > 0 ? "claim alarm" : "claim zero")
+      : "claim";
+    return '<div class="' + cls + '"><span class="cn">' + (has ? num(Math.round(n)) : "—") +
+      '</span><span class="cl">' + esc(label) + '</span><span class="cd">' +
+      esc(has ? desc : "not reported in this window") + "</span></div>";
+  }).join("");
+
+  const other = Object.keys(by).filter((k) => !CLAIM_ORDER.some(([c]) => c === k));
+  if (other.length){
+    /* An outcome label we do not know about is a schema change, not something to drop. */
+    notes.innerHTML += note("warn","⚠", "<b>Unrecognised outcome label(s):</b> " +
+      esc(other.join(", ")) + ". Shown here rather than discarded.");
+  }
+}
+
+/* ------------------------------------------------------------------ loading */
+async function getJSON(url){
+  const r = await fetch(url, {headers:{"Accept":"application/json"}});
+  const body = await r.json().catch(() => null);
+  if (!r.ok){
+    /* The 503 bodies carry a usable reason; prefer it over "HTTP 503". */
+    const why = body && (body.error || body.detail);
+    throw new Error(why ? String(why) : "HTTP " + r.status + " from " + url);
+  }
+  return body;
+}
+async function pollFarm(){
+  S.lastPoll = Date.now();
+  const [fleet, vitals] = await Promise.allSettled([
+    getJSON("/api/fleet"), getJSON("/api/vitals"),
+  ]);
+  if (fleet.status === "fulfilled"){ S.fleet = fleet.value; S.fleetErr = null; }
+  else { S.fleetErr = fleet.reason.message || String(fleet.reason); }
+  if (vitals.status === "fulfilled"){ S.vitals = vitals.value; S.vitalsErr = null; }
+  else { S.vitalsErr = vitals.reason.message || String(vitals.reason); }
+
+  renderFleet(); renderIncident(); renderVitals(); setFreshness();
+}
+async function pollAgent(){
+  try { S.agent = await getJSON("/api/agent/metrics"); S.agentErr = null; }
+  catch (e){ S.agentErr = e.message || String(e); }
+  renderAgent();
+}
+/* The top-bar dot is the one place that summarises "can I believe this page right now". */
+function setFreshness(){
+  const t = new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit",
+                                               second:"2-digit"});
+  if (S.fleetErr || S.vitalsErr){
+    fresh("bad", (S.fleetErr ? "fleet" : "vitals") + " call failed"); return;
+  }
+  const f = S.fleet || {};
+  if (f.error){ fresh("bad", "sweep error"); return; }
+  if (f.deadline_is_placeholder){ fresh("warn", "placeholder deadline"); return; }
+  if (!((f.shots || []).length)){ fresh("warn", "no shots in flight"); return; }
+  fresh((f.exceptions || []).length ? "warn" : "live",
+        ((f.exceptions || []).length ? "exception · " : "swept ") + t);
+}
+
+/* The persona lives in the top bar and the base layout fires this when it changes; only
+   the incident card is persona-dependent, so nothing else re-renders. */
+document.addEventListener("persona", renderIncident);
+
+pollFarm(); pollAgent();
+setInterval(pollFarm, POLL_MS);
+setInterval(pollAgent, AGENT_POLL_MS);
+/* A hidden tab should not keep querying Prometheus; coming back should not have to wait
+   out the rest of a 20s tick. The guard keeps the effective floor at POLL_MS. */
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && Date.now() - S.lastPoll >= POLL_MS) pollFarm();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,638 @@
+{% extends "_base.html" %}
+{#
+  /agent — the agent, observed.
+
+  This page answers "do I trust the thing that told me?", and it is built so that it cannot
+  flatter the agent: every number is read back out of Prometheus through
+  GET /api/agent/metrics, from the same series a Grafana dashboard would read. Nothing here
+  is held in the web process's memory, so the page and the stack cannot disagree.
+
+  The headline is write-claim verification, because that is the one number that says whether
+  the agent's self-report matched reality. `false_success` counts writes the agent REPORTED
+  as successful that an independent out-of-band check (verify.py, Grafana's HTTP API — not
+  the MCP tools the agent used) could not find in the stack.
+
+  Absence is handled as absence, never as zero: /api/agent/metrics runs INSTANT queries, so
+  a run older than Prometheus's ~5 minute lookback reports nothing at all. An empty
+  verification panel means "unobserved", and saying "0 false successes" there would be the
+  exact laundering this page exists to prevent.
+#}
+
+{% block head_extra %}
+/* ============================================================ /agent */
+.zone > .st{display:none}
+.zone[data-state="loading"] > .st-loading,
+.zone[data-state="ready"]   > .st-ready,
+.zone[data-state="empty"]   > .st-empty,
+.zone[data-state="error"]   > .st-error{display:block}
+
+/* ------------------------------------------------------- verification headline */
+.alarm{border:1px solid var(--crit); border-left-width:4px; border-radius:var(--r);
+  background:linear-gradient(90deg,rgba(255,95,86,.14),rgba(255,95,86,.04));
+  padding:1rem 1.05rem; display:flex; gap:1rem; align-items:flex-start; flex-wrap:wrap}
+.alarm .n{font-family:var(--mono); font-size:clamp(2.4rem,10vw,3.6rem); line-height:.9;
+  font-weight:700; color:var(--crit); flex:0 0 auto}
+.alarm .body{flex:1 1 16rem; min-width:0}
+.alarm .t{font-size:clamp(1rem,3.2vw,1.25rem); font-weight:700; color:#fff;
+  letter-spacing:-.01em; text-wrap:balance}
+.alarm .d{font-size:.86rem; color:var(--ink2); margin:.4rem 0 0; max-width:62ch}
+.alarm code{font-family:var(--mono); font-size:.78rem; color:var(--cyan)}
+.calm{border:1px solid var(--ok); border-left-width:4px; border-radius:var(--r);
+  background:rgba(63,185,80,.07); padding:.85rem .95rem}
+.calm .t{color:var(--ok); font-weight:700; font-size:.95rem}
+.calm .d{font-size:.84rem; color:var(--ink2); margin:.3rem 0 0}
+
+/* stacked proportion of the four outcomes: the shape of the agent's honesty, one glance */
+.stack{display:flex; height:14px; border-radius:7px; overflow:hidden; border:1px solid var(--line);
+  background:#0a0d11; margin:.85rem 0 .5rem}
+.stack span{display:block; min-width:2px}
+.stack .confirmed{background:var(--ok)}
+.stack .honest_failure{background:var(--cyan)}
+.stack .unchecked{background:var(--ink3)}
+.stack .false_success{background:var(--crit);
+  background-image:repeating-linear-gradient(45deg,rgba(0,0,0,.3) 0 3px,transparent 3px 6px)}
+
+.outcomes{display:grid; gap:.6rem; grid-template-columns:repeat(4,minmax(0,1fr))}
+@media (max-width:900px){.outcomes{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:520px){.outcomes{grid-template-columns:minmax(0,1fr)}}
+.oc{border:1px solid var(--line); border-top:3px solid var(--oc,var(--line2));
+  border-radius:var(--r); background:var(--panel); padding:.7rem .75rem}
+.oc[data-o="confirmed"]{--oc:var(--ok)}
+.oc[data-o="honest_failure"]{--oc:var(--cyan)}
+.oc[data-o="unchecked"]{--oc:var(--ink3)}
+.oc[data-o="false_success"]{--oc:var(--crit)}
+.oc b{display:block; font-family:var(--mono); font-size:1.6rem; line-height:1;
+  color:var(--oc)}
+.oc .name{display:block; font-family:var(--mono); font-size:.64rem; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--ink2); margin:.3rem 0 .2rem}
+.oc .def{display:block; font-size:.76rem; color:var(--ink3); line-height:1.45}
+
+/* -------------------------------------------------------------- stage table */
+.rows{display:grid; gap:.35rem}
+.srow{display:grid; gap:.15rem .7rem; align-items:center;
+  grid-template-columns:minmax(7rem,11rem) minmax(0,1fr) 5.5rem;
+  padding:.45rem .1rem; border-bottom:1px solid var(--line)}
+.srow:last-child{border-bottom:0}
+.srow .nm{font-family:var(--mono); font-size:.8rem; color:var(--ink); min-width:0;
+  overflow-wrap:anywhere}
+.srow .nm em{font-style:normal; display:block; font-size:.62rem; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--ink3)}
+.srow .val{font-family:var(--mono); font-size:.8rem; color:var(--ink2); text-align:right;
+  white-space:nowrap}
+.srow .val.hot{color:var(--amber)}
+.bar{position:relative; height:9px; border-radius:5px; background:#0a0d11;
+  border:1px solid var(--line); overflow:hidden}
+.bar span{position:absolute; inset:0 auto 0 0; background:var(--amber); opacity:.8}
+.bar.two span.p{background:var(--violet)}
+.bar.two span.c{background:var(--cyan); left:auto}
+.bar.lat span{background:var(--cyan); opacity:.75}
+@media (max-width:640px){
+  .srow{grid-template-columns:minmax(0,1fr) 5.5rem}
+  .srow .bar{grid-column:1 / -1}
+}
+.tier{font-family:var(--mono); font-size:.58rem; letter-spacing:.08em; text-transform:uppercase;
+  border:1px solid var(--line2); border-radius:999px; padding:.02rem .38rem; color:var(--ink3)}
+.tier[data-t="strong"]{border-color:var(--amber-dim); color:var(--amber)}
+.legend{display:flex; gap:.9rem; flex-wrap:wrap; font-family:var(--mono); font-size:.66rem;
+  color:var(--ink3); margin:.6rem 0 0}
+.legend i{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:.3rem}
+
+.why{font-size:.84rem; color:var(--ink2); margin:.85rem 0 0; padding-top:.75rem;
+  border-top:1px solid var(--line); max-width:70ch}
+.why b{color:var(--ink)}
+
+/* --------------------------------------------------------------- failures */
+.fails{list-style:none; margin:0; padding:0; display:grid; gap:.4rem}
+.fails li{border:1px solid var(--line); border-left:3px solid var(--amber); border-radius:8px;
+  background:#0c1015; padding:.5rem .65rem}
+.fails .h{font-family:var(--mono); font-size:.78rem; color:var(--ink)}
+.fails .h b{color:var(--amber)}
+.fails .d{font-size:.78rem; color:var(--ink3); margin-top:.2rem}
+
+/* ------------------------------------------------------------ shared boxes */
+.errbox{border:1px solid var(--crit); border-left-width:3px; background:rgba(255,95,86,.07);
+  border-radius:var(--r); padding:.85rem .9rem}
+.errbox .t{color:var(--crit); font-weight:700; font-size:.9rem}
+.errbox .m{font-family:var(--mono); font-size:.76rem; color:var(--ink2); margin-top:.35rem;
+  overflow-wrap:anywhere}
+.errbox .h{font-size:.82rem; color:var(--ink3); margin-top:.4rem}
+.emptybox{border:1px dashed var(--line2); border-radius:var(--r); padding:.85rem .9rem;
+  color:var(--ink3); font-size:.84rem}
+.emptybox strong{color:var(--ink2)}
+.emptybox code{font-family:var(--mono); font-size:.76rem; color:var(--cyan)}
+.skel{height:40px; border-radius:8px; background:linear-gradient(90deg,
+  var(--panel),var(--panel2),var(--panel)); background-size:200% 100%;
+  animation:sh 1.4s linear infinite; margin-bottom:.45rem}
+@keyframes sh{to{background-position:-200% 0}}
+.glink{display:inline-flex; align-items:center; gap:.4rem; font-family:var(--mono);
+  font-size:.78rem; color:var(--cyan); text-decoration:none; border:1px solid var(--line2);
+  border-radius:8px; padding:.4rem .65rem; max-width:100%; overflow-wrap:anywhere}
+.glink:hover{border-color:var(--cyan)}
+.glink[aria-disabled="true"]{color:var(--ink3); border-color:var(--line); cursor:not-allowed}
+{% endblock %}
+
+{% block content %}
+
+<!-- ====================================================== 1. WRITE CLAIMS
+     The headline. Everything else on this page is cost accounting; this is the honesty
+     accounting, and it is the reason the page exists. -->
+<section class="sect">
+  <h2>Write-claim verification · the agent's self-report, checked</h2>
+  <div class="zone" id="claimZone" data-state="loading">
+
+    <div class="st st-ready">
+      <div id="claimAlarm"></div>
+      <div class="stack" id="claimStack" aria-hidden="true"></div>
+      <div class="outcomes" id="claimTiles"></div>
+      <p class="dim" style="font-size:.78rem;margin:.8rem 0 0">
+        Counted by <code class="mono">second_unit_write_claims_total{outcome}</code>, written by
+        <code class="mono">observe.py</code> after every approved write-back. The check itself is
+        <code class="mono">verify.py</code>: a before/after diff of the Grafana stack over its
+        HTTP API — <code class="mono">/api/search</code>, <code class="mono">/api/annotations</code>,
+        <code class="mono">/api/v1/provisioning/alert-rules</code> — deliberately <em>not</em> the
+        MCP tools the agent just used. The model decides what to do; code decides what is true.
+      </p>
+    </div>
+
+    <div class="st st-loading"><div class="skel" style="height:120px"></div></div>
+
+    <div class="st st-empty">
+      <div class="emptybox">
+        <strong>No verification samples in the query window — this is not "zero false successes".</strong>
+        <p style="margin:.4rem 0 0"><code>/api/agent/metrics</code> asks Prometheus for
+          <em>instant</em> values, and an instant query only sees samples from roughly the last
+          five minutes. If the most recent investigation pushed its telemetry before that, every
+          series here reads empty. Empty means <b>unobserved</b>. Reporting it as a clean sheet
+          would be exactly the laundering this panel exists to prevent — run an investigation, or
+          read the series over a longer range in Grafana (link at the bottom of this page).</p>
+      </div>
+    </div>
+
+    <div class="st st-error">
+      <div class="errbox">
+        <div class="t">✗ Could not read the agent's own metrics</div>
+        <div class="m" id="claimErrMsg">—</div>
+        <div class="h">No verification result is shown, because none was read. The agent may have
+          run perfectly; this page simply does not know, and says so rather than guessing.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ====================================================== 2. PER-STAGE COST -->
+<section class="sect">
+  <h2>Per-stage cost · where an investigation's time and tokens go</h2>
+  <div class="card">
+    <div class="zone" id="costZone" data-state="loading">
+      <div class="st st-ready">
+        <div class="rows" id="costRows"></div>
+        <div class="legend">
+          <span><i style="background:var(--amber)"></i>wall clock</span>
+          <span><i style="background:var(--violet)"></i>prompt tokens</span>
+          <span><i style="background:var(--cyan)"></i>candidate tokens</span>
+          <span id="costTotal"></span>
+        </div>
+        <p class="why" id="costWhy"></p>
+      </div>
+      <div class="st st-loading"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+      <div class="st st-empty">
+        <div class="emptybox"><strong>No stage samples in the query window.</strong>
+          <p style="margin:.35rem 0 0">Same cause as above: instant queries see ~5 minutes.
+            <code>second_unit_run_seconds</code> exists in the stack — it is just older than the
+            lookback. Nothing is inferred in its absence.</p></div>
+      </div>
+      <div class="st st-error"><div class="errbox"><div class="t">✗ Metrics unavailable</div>
+        <div class="m" id="costErrMsg">—</div></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ====================================================== 3. TOOL LATENCY -->
+<section class="sect">
+  <h2>Tool latency · slowest first</h2>
+  <div class="card">
+    <div class="zone" id="latZone" data-state="loading">
+      <div class="st st-ready">
+        <div class="rows" id="latRows"></div>
+        <p class="dim" style="font-size:.78rem;margin:.7rem 0 0">
+          <code class="mono">second_unit_tool_latency_ms{stage,tool}</code> — one MCP round trip,
+          measured in the agent around the call. This is the bridge plus Grafana plus the
+          datasource, not the model.
+        </p>
+      </div>
+      <div class="st st-loading"><div class="skel"></div><div class="skel"></div></div>
+      <div class="st st-empty">
+        <div class="emptybox"><strong>No tool-latency samples in the query window.</strong>
+          <p style="margin:.35rem 0 0">A stage that made no MCP calls emits none — the
+            remediation planner has no tools at all, by construction.</p></div>
+      </div>
+      <div class="st st-error"><div class="errbox"><div class="t">✗ Metrics unavailable</div>
+        <div class="m" id="latErrMsg">—</div></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ====================================================== 4. FAILURES -->
+<section class="sect">
+  <h2>Stage failures · bucketed reasons</h2>
+  <div class="card">
+    <div class="zone" id="failZone" data-state="loading">
+      <div class="st st-ready"><ul class="fails" id="failRows"></ul></div>
+      <div class="st st-loading"><div class="skel"></div></div>
+      <div class="st st-empty">
+        <div class="calm">
+          <div class="t">✓ No failures recorded</div>
+          <div class="d">No sample of <code class="mono">second_unit_stage_failures_total</code> in
+            the window. Every stage that ran, ran to a schema-valid result. Reasons are bucketed to
+            four values — <b>quota</b>, <b>budget</b>, <b>unparseable</b>, <b>no_response</b> —
+            because unbounded label values are the one way adding observability can harm the host
+            stack.</div>
+        </div>
+      </div>
+      <div class="st st-error"><div class="errbox"><div class="t">✗ Metrics unavailable</div>
+        <div class="m" id="failErrMsg">—</div></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ====================================================== 5. GRAFANA -->
+<section class="sect">
+  <h2>The same numbers, in Grafana</h2>
+  <div class="card">
+    <p style="margin:0 0 .6rem;font-size:.86rem;color:var(--ink2)">
+      Grafana is both this agent's tool surface (over MCP) and the backend its own telemetry
+      lands in, so nothing on this page is a private copy. The metrics above are the
+      <code class="mono">second_unit_*</code> series under <code class="mono">job="second-unit-agent"</code>,
+      queryable in <b>Explore → Prometheus</b>. ADK instruments itself with OpenTelemetry GenAI
+      semantic conventions, and those spans for these runs are exported to
+      <b>Grafana Cloud AI Observability</b> in the same stack under service name
+      <code class="mono">second-unit</code> (the web process traces separately as
+      <code class="mono">second-unit-web</code>) — open the AI Observability app and filter by that
+      service.
+    </p>
+    <a class="glink" id="gLink" href="#" rel="noreferrer noopener" target="_blank">↗ open the stack</a>
+    <p class="dim" style="font-size:.74rem;margin:.6rem 0 0" id="gNote">
+      Deliberately the stack root and not a deep link: this page cannot verify the app's URL path
+      for your stack, and a broken deep link is worse than a short instruction.
+    </p>
+  </div>
+</section>
+
+<p class="dim" style="font-size:.74rem">
+  Source: <code class="mono">GET /api/agent/metrics</code>, which reads the series back out of
+  Prometheus through Grafana's datasource proxy. Nothing is served from the web process's memory.
+  Instant queries, so every panel shows the latest sample within roughly a five-minute lookback —
+  if a series is missing from the last run, its value here is the last run that emitted it.
+  Refreshed every 20&nbsp;s.
+</p>
+{% endblock %}
+
+{% block docs %}
+<h3>Agent — observed</h3>
+<p>Our own agent's telemetry, read back from the stack it writes to. The page is here to make
+the agent falsifiable: it reports what an investigation cost, what failed, and whether the
+writes it claimed actually happened.</p>
+
+<h4>The self-report is a claim</h4>
+<p>An agent that says "annotation created" has produced a sentence, not a result. In a real run
+the executor reported four dashboard writes and created no dashboard at all; reading its own
+report you would have concluded three writes landed. One did. That run is why
+<code>second_unit_write_claims_total</code> exists.</p>
+
+<h4>Verification is out of band</h4>
+<ul>
+  <li><code>verify.py</code> snapshots the stack <em>before</em> the write-back — dashboard UIDs,
+    annotation ids, alert-rule UIDs — then diffs it after.</li>
+  <li>It reads Grafana's own HTTP API (<code>/api/search</code>, <code>/api/annotations</code>,
+    <code>/api/v1/provisioning/alert-rules</code>), <b>not</b> the MCP tools the agent used. A
+    verifier that asks the same tool that just lied learns nothing.</li>
+  <li>A claim is credited only when a <em>new</em> object of the right kind appeared. Matching by
+    name was tried first and produced false confirmations, because a built-in Grafana dashboard
+    happened to contain a matching word. An id diff has no false-positive mode.</li>
+</ul>
+
+<h4>The four outcomes</h4>
+<ul>
+  <li><code>confirmed</code> — claimed success, new object found.</li>
+  <li><code>honest_failure</code> — reported failure, and nothing appeared. The agent was right
+    about the world; trust is intact.</li>
+  <li><code>unchecked</code> — an action type with no independent check implemented. Counted, not
+    credited.</li>
+  <li><code>false_success</code> — claimed success, nothing found. The one number worth paging on.
+    It is drawn hatched red and given the top of the page whenever it is above zero.</li>
+</ul>
+
+<h4>Where the numbers come from</h4>
+<ul>
+  <li><code>second_unit_run_seconds{stage}</code> — wall clock per stage, plus a
+    <code>stage="total"</code> series for the run, shown separately rather than as a row.</li>
+  <li><code>second_unit_tool_calls_total{stage}</code> — MCP calls per stage.</li>
+  <li><code>second_unit_tokens_total{stage,kind}</code> — <code>prompt</code> and
+    <code>candidate</code> tokens per stage.</li>
+  <li><code>second_unit_tool_latency_ms{stage,tool}</code> — per-call round trip, measured around
+    the call in the agent.</li>
+  <li><code>second_unit_stage_failures_total{stage,reason}</code> — bucketed to four reasons so the
+    label cardinality stays bounded.</li>
+</ul>
+
+<h4>Why the page cannot flatter the agent</h4>
+<p>These metrics are not kept in the web process. They are pushed to Prometheus by the agent
+(<code>observe.py</code>, batched once per run so measuring latency does not add latency) and read
+back by <code>/api/agent/metrics</code> through Grafana's datasource proxy. The page and a Grafana
+dashboard are reading the same samples, so a number here that nobody can reproduce in Explore is a
+bug in this page, not a favourable reading.</p>
+
+<div class="dnote">Instant queries have a ~5 minute lookback, so a run older than that leaves every
+panel empty. Empty is rendered as <em>unobserved</em>, never as zero — particularly for
+<code>false_success</code>, where "no data" and "none" are opposite claims.</div>
+
+<h4>Cost, and why two model tiers</h4>
+<p>Tool-using stages spend most of their tokens on telemetry pulled into context rather than on
+generated text — the prompt:candidate ratio in the panel is the evidence. Retrieval work that is
+mostly "fetch and summarise" runs on the cheaper Flash model
+(<code>GEMINI_MODEL</code>); the two stages whose output people plan around — the diagnosis and
+the impact forecast — get the stronger model (<code>GEMINI_MODEL_STRONG</code>). The tier shown
+per row is the default in <code>stages.py</code>; the diagnostician accepts an override because
+the strong model is also the first to hit a quota, and a degraded-but-answering diagnosis beats a
+429.</p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* /agent — read the agent's own series and render them with divs.
+   No charting library: strict CSP, no external requests, no build step. Bars are one div
+   with a width, which is all a bar has ever been.
+   IIFE so nothing collides with the shell's globals ($, esc, fresh). */
+(() => {
+  "use strict";
+
+  const POLL_MS = 20000;
+
+  /* Default model tier per stage, from stages.py. Kept here as a small map rather than
+     invented per render, and labelled in the UI as "default" because the diagnostician
+     takes a runtime override when the strong model is out of quota. */
+  const STAGE_META = {
+    watchtower:           {role:"retrieval · triage",     tier:"flash"},
+    diagnostician:        {role:"retrieval · root cause", tier:"strong"},
+    impact_forecaster:    {role:"forecast",               tier:"strong"},
+    remediation_planner:  {role:"proposes · no tools",    tier:"flash"},
+    remediation_executor: {role:"approved writes",        tier:"flash"},
+  };
+  const STAGE_ORDER = Object.keys(STAGE_META);
+
+  const OUTCOMES = [
+    ["false_success", "claimed success — nothing found in the stack. The agent was wrong about the world."],
+    ["confirmed",     "claimed success — a new object of that kind really appeared."],
+    ["honest_failure","reported the write failed, and it had. Trust intact."],
+    ["unchecked",     "no independent check exists for that action type. Counted, not credited."],
+  ];
+  const REASON_TEXT = {
+    quota:       "the model API returned RESOURCE_EXHAUSTED / 429 — the stronger model runs out first",
+    budget:      "the stage exceeded its own budget and was stopped rather than allowed to run on",
+    unparseable: "the stage produced output that failed schema validation, so nothing downstream ran",
+    no_response: "the stage finished without a final response",
+    other:       "a reason outside the four buckets; the raw error is in the run log, not in the label",
+    unknown:     "the stage failed without an error string to bucket",
+  };
+
+  const byLabel = (rows, key) => {
+    /* Sum rather than overwrite: two series can share the label we group by (e.g. tokens
+       split into prompt/candidate) and silently keeping the last one would understate cost. */
+    const out = new Map();
+    for (const r of rows || []) {
+      const k = (r.labels || {})[key];
+      if (k === undefined) continue;
+      out.set(k, (out.get(k) || 0) + (Number(r.value) || 0));
+    }
+    return out;
+  };
+  const setState = (id, s) => { $(id).dataset.state = s; };
+  const num = (n) => (Number(n) || 0).toLocaleString();
+  const secs = (n) => (Number(n) || 0).toFixed(1) + "s";
+  const pctOf = (v, max) => (max > 0 ? Math.max(1.5, (v / max) * 100) : 0);
+
+  /* ---------------------------------------------------------------- claims */
+  function renderClaims(rows) {
+    const m = byLabel(rows, "outcome");
+    /* A series present with value 0 is a real observation ("we checked, none"); a series
+       absent entirely is not. Only the second case is the empty state. */
+    if (m.size === 0) { setState("claimZone", "empty"); return null; }
+
+    const total = [...m.values()].reduce((a, b) => a + b, 0);
+    const fs = m.get("false_success") || 0;
+
+    $("claimAlarm").innerHTML = fs > 0
+      ? `<div class="alarm">
+           <div class="n" aria-hidden="true">${num(fs)}</div>
+           <div class="body">
+             <div class="t">${fs === 1 ? "One write was" : fs + " writes were"} reported as successful
+               and ${fs === 1 ? "is" : "are"} not in the stack</div>
+             <p class="d">The agent said the write landed. An independent check — a before/after diff
+               of Grafana over its HTTP API, not the MCP tools the agent used — found no new object
+               to credit it to. Read the rest of that run's report as a claim: it was accurate about
+               what it intended and wrong about what happened. Nothing downstream that assumes the
+               write exists can be trusted.</p>
+           </div>
+         </div>`
+      : `<div class="calm">
+           <div class="t">✓ No false successes in this window</div>
+           <div class="d">Every write the agent claimed was matched to a new object in the stack, or
+             was reported as a failure and really did fail. ${total} claim${total === 1 ? "" : "s"}
+             checked.</div>
+         </div>`;
+
+    $("claimStack").innerHTML = OUTCOMES.map(([k]) => {
+      const v = m.get(k) || 0;
+      return v > 0 ? `<span class="${k}" style="flex:${v} 1 0"
+        title="${k}: ${v}"></span>` : "";
+    }).join("");
+
+    $("claimTiles").innerHTML = OUTCOMES.map(([k, def]) => `
+      <div class="oc" data-o="${k}">
+        <b>${m.has(k) ? num(m.get(k)) : "–"}</b>
+        <span class="name">${k.replace("_", " ")}</span>
+        <span class="def">${esc(def)}</span>
+      </div>`).join("");
+
+    setState("claimZone", "ready");
+    return fs;
+  }
+
+  /* ------------------------------------------------------------ stage cost */
+  function renderCost(secondsRows, callRows, tokenRows) {
+    const sec = byLabel(secondsRows, "stage");
+    const calls = byLabel(callRows, "stage");
+    const runTotal = sec.get("total");
+    sec.delete("total");   // a run total is not a stage; it goes in the legend
+
+    const prompt = new Map(), cand = new Map();
+    for (const r of tokenRows || []) {
+      const st = (r.labels || {}).stage, kind = (r.labels || {}).kind;
+      if (!st) continue;
+      const bucket = kind === "candidate" ? cand : prompt;
+      bucket.set(st, (bucket.get(st) || 0) + (Number(r.value) || 0));
+    }
+
+    const stages = [...new Set([...sec.keys(), ...calls.keys(), ...prompt.keys(), ...cand.keys()])];
+    if (!stages.length) { setState("costZone", "empty"); return; }
+
+    /* Pipeline order, not alphabetical and not by size: a reader is following a run. */
+    stages.sort((a, b) => {
+      const ia = STAGE_ORDER.indexOf(a), ib = STAGE_ORDER.indexOf(b);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+    });
+
+    const maxSec = Math.max(...stages.map((s) => sec.get(s) || 0), 0);
+    const maxTok = Math.max(...stages.map((s) => (prompt.get(s) || 0) + (cand.get(s) || 0)), 0);
+
+    $("costRows").innerHTML = stages.map((s) => {
+      const meta = STAGE_META[s] || {role:"", tier:""};
+      const p = prompt.get(s) || 0, c = cand.get(s) || 0, tot = p + c;
+      const sw = pctOf(sec.get(s) || 0, maxSec);
+      const pw = maxTok ? (p / maxTok) * 100 : 0;
+      const cw = maxTok ? (c / maxTok) * 100 : 0;
+      const slowest = (sec.get(s) || 0) === maxSec && maxSec > 0;
+      return `
+        <div class="srow">
+          <div class="nm">${esc(s)}
+            <em>${esc(meta.role)}${meta.tier ? ` <span class="tier" data-t="${meta.tier}">${meta.tier}</span>` : ""}</em>
+          </div>
+          <div class="bar"><span style="width:${sw}%"></span></div>
+          <div class="val${slowest ? " hot" : ""}">${sec.has(s) ? secs(sec.get(s)) : "—"}</div>
+          <div class="nm dim" style="font-size:.68rem">${calls.has(s) ? num(calls.get(s)) + " tool calls" : "no tool calls"}</div>
+          <div class="bar two">
+            <span class="p" style="width:${pw}%"></span>
+            <span class="c" style="left:${pw}%;width:${cw}%"></span>
+          </div>
+          <div class="val">${tot ? num(tot) + " tok" : "—"}</div>
+        </div>`;
+    }).join("");
+
+    $("costTotal").textContent = runTotal !== undefined
+      ? "run total " + secs(runTotal) : "";
+
+    /* The cheaper-model argument, computed rather than asserted: if prompt tokens dwarf
+       generated tokens on the tool-using stages, their cost is reading telemetry, not
+       thinking about it — and reading is what a cheap model is for. */
+    const toolStages = stages.filter((s) => (calls.get(s) || 0) > 0);
+    const sum = (m2, ks) => ks.reduce((a, k) => a + (m2.get(k) || 0), 0);
+    const pTool = sum(prompt, toolStages), cTool = sum(cand, toolStages);
+    const pAll = sum(prompt, stages) || 1;
+    const callsAll = sum(calls, stages) || 1;
+    const shareTok = Math.round((pTool / pAll) * 100);
+    const shareCalls = Math.round((sum(calls, toolStages) / callsAll) * 100);
+    const ratio = cTool > 0 ? (pTool / cTool).toFixed(1) : null;
+
+    /* Name the expensive stage rather than leaving a reader to compare bar lengths. */
+    let dear = "", dearSec = -1;
+    for (const s of stages) if ((sec.get(s) || 0) > dearSec) { dear = s; dearSec = sec.get(s) || 0; }
+
+    $("costWhy").innerHTML = toolStages.length
+      ? `<b>${esc(dear)} is the most expensive stage</b> — ${secs(dearSec)} of wall clock,
+         ${num(prompt.get(dear) || 0)} prompt tokens and ${num(calls.get(dear) || 0)} tool calls.
+         Across the run the tool-using stages (${toolStages.map(esc).join(", ")}) make
+         ${shareCalls}% of the MCP calls and carry ${shareTok}% of the prompt
+         tokens${ratio ? `, reading ${ratio}× more tokens than they generate` : ""}. That ratio is
+         the point: their cost is telemetry arriving in the context window, not reasoning about it,
+         and a cheaper model reads a Prometheus response as well as an expensive one. So the
+         retrieval-shaped work runs on Flash and the stronger model is spent only where the output
+         is short and people plan around it — the diagnosis and the impact forecast. The tier on
+         each row is that stage's default in <code class="mono">stages.py</code>.`
+      : `<b>Why two model tiers.</b> No tool calls were recorded in this window, so the retrieval
+         share cannot be computed from these samples — the claim is not asserted without them.`;
+
+    setState("costZone", "ready");
+  }
+
+  /* --------------------------------------------------------------- latency */
+  function renderLatency(rows) {
+    const items = (rows || [])
+      .filter((r) => r.labels && r.labels.tool)
+      .map((r) => ({stage:r.labels.stage || "?", tool:r.labels.tool, ms:Number(r.value) || 0}))
+      .sort((a, b) => b.ms - a.ms);
+    if (!items.length) { setState("latZone", "empty"); return; }
+    const max = items[0].ms;
+    $("latRows").innerHTML = items.map((it) => `
+      <div class="srow">
+        <div class="nm">${esc(it.tool)}<em>${esc(it.stage)}</em></div>
+        <div class="bar lat"><span style="width:${pctOf(it.ms, max)}%"></span></div>
+        <div class="val${it.ms === max ? " hot" : ""}">${num(Math.round(it.ms))} ms</div>
+      </div>`).join("");
+    setState("latZone", "ready");
+  }
+
+  /* -------------------------------------------------------------- failures */
+  function renderFailures(rows) {
+    const items = (rows || []).filter((r) => (Number(r.value) || 0) > 0);
+    if (!items.length) { setState("failZone", "empty"); return; }   // empty here is good news
+    items.sort((a, b) => (Number(b.value) || 0) - (Number(a.value) || 0));
+    $("failRows").innerHTML = items.map((r) => {
+      const st = (r.labels || {}).stage || "?";
+      const reason = (r.labels || {}).reason || "unknown";
+      const n = Number(r.value) || 0;
+      return `<li>
+        <div class="h">${esc(st)} · <b>${esc(reason)}</b> × ${num(n)}</div>
+        <div class="d">${esc(REASON_TEXT[reason] || "reason not in the known buckets")}</div>
+      </li>`;
+    }).join("");
+    setState("failZone", "ready");
+  }
+
+  function renderGrafana(url) {
+    const a = $("gLink");
+    if (url) {
+      a.href = url;
+      a.textContent = "↗ " + url.replace(/^https?:\/\//, "");
+      a.removeAttribute("aria-disabled");
+    } else {
+      /* No GRAFANA_URL configured: say so instead of linking somewhere invented. */
+      a.href = "#";
+      a.setAttribute("aria-disabled", "true");
+      a.textContent = "no stack URL configured (GRAFANA_URL unset)";
+      $("gNote").textContent =
+        "The server did not report a stack URL, so no link is offered. The series above are " +
+        "still queryable in whichever Grafana stack this deployment pushes to.";
+    }
+  }
+
+  function fail(msg) {
+    for (const [zone, el] of [["claimZone","claimErrMsg"], ["costZone","costErrMsg"],
+                              ["latZone","latErrMsg"], ["failZone","failErrMsg"]]) {
+      $(el).textContent = msg;
+      setState(zone, "error");
+    }
+    fresh("bad", "metrics unreadable");
+  }
+
+  async function load() {
+    let data;
+    try {
+      const r = await fetch("/api/agent/metrics", {headers:{accept:"application/json"}});
+      data = await r.json();
+      if (!r.ok) throw new Error(data && data.error ? data.error : "HTTP " + r.status);
+    } catch (err) {
+      fail((err && err.message) ? err.message : String(err));
+      return;
+    }
+    const fs = renderClaims(data.write_claims);
+    renderCost(data.stage_seconds, data.tool_calls, data.tokens);
+    renderLatency(data.tool_latency_ms);
+    renderFailures(data.failures);
+    renderGrafana(data.grafana_url);
+
+    /* The freshness chip reports the agent's honesty, not the fetch: a successful fetch of
+       "1 false success" is not a healthy state. */
+    if (fs === null) fresh("warn", "no recent run");
+    else if (fs > 0) fresh("bad", fs + " unverified write" + (fs === 1 ? "" : "s"));
+    else fresh("live", "claims verified");
+  }
+
+  load();
+  let timer = setInterval(load, POLL_MS);
+  document.addEventListener("visibilitychange", () => {
+    clearInterval(timer);
+    if (!document.hidden) { load(); timer = setInterval(load, POLL_MS); }
+  });
+})();
+</script>
+{% endblock %}

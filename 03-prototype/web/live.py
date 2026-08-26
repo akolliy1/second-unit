@@ -35,8 +35,10 @@ from second_unit.pipeline import stream_stage_resilient             # noqa: E402
 from second_unit.run import (                                       # noqa: E402
     WATCHTOWER_TASK,
     diagnostician_task,
-    next_review_deadline,
+    published_review_deadline,
 )
+from second_unit.briefing import compose as compose_briefing        # noqa: E402
+from second_unit.briefing import estimated_seconds                  # noqa: E402
 from second_unit.schemas import (                                   # noqa: E402
     Diagnosis,
     ImpactForecast,
@@ -169,7 +171,7 @@ async def iter_live_events() -> AsyncIterator[dict]:
         ("impact_forecaster", impact_forecaster,
          lambda: (
              "Forecast the production impact of this diagnosis. The client review "
-             f"deadline is {next_review_deadline()}. Measure frames remaining and both "
+             f"deadline is {published_review_deadline('SH042')}. Measure frames remaining and both "
              "the current and pre-incident baseline completion rate, then call "
              f"forecast_delivery.\n\n{outputs['diagnostician'].model_dump_json(indent=2)}"
          ), ImpactForecast, flash),
@@ -230,9 +232,29 @@ async def iter_live_events() -> AsyncIterator[dict]:
         }
 
         if stage_id == "impact_forecaster":
-            yield verdict_event(outputs["impact_forecaster"], outputs["diagnostician"])
+            ev = verdict_event(outputs["impact_forecaster"], outputs["diagnostician"])
+            # If the deadline could not be read from telemetry, say so on the page rather
+            # than presenting a confident forecast against an invented commitment.
+            from second_unit import run as _run
+            if getattr(_run, "deadline_fallback_reason", None):
+                ev["deadline_warning"] = (
+                    "The published review deadline could not be read "
+                    f"({_run.deadline_fallback_reason}); this forecast uses a placeholder.")
+            yield ev
         if stage_id == "remediation_planner":
             yield writeback_event(outputs["remediation_planner"])
+            # The dailies briefing. Composed HERE, where the typed stage outputs still
+            # exist, rather than in the audio endpoint — synthesis then needs only a
+            # string, and the script is deterministic from data we have already verified.
+            try:
+                script = compose_briefing(
+                    outputs["impact_forecaster"], outputs["diagnostician"],
+                    outputs["remediation_planner"])
+                yield {"type": "briefing", "script": script,
+                       "seconds_estimate": round(estimated_seconds(script))}
+            except Exception as exc:  # noqa: BLE001 — a briefing must not fail a run
+                yield {"type": "briefing", "script": "",
+                       "error": f"{type(exc).__name__}: {exc}"}
 
     yield {"type": "run_done", "total_tool_calls": total_calls,
            "seconds": round(time.time() - started, 1), "stages_ok": stages_ok}

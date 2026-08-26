@@ -1,84 +1,12 @@
-<!doctype html>
-<!--
-  Second Unit — one page, no build step.
-
-  Everything is inlined: the deploy target has no guaranteed network egress, and a blocked
-  CDN would hand a judge an unstyled page. That is a disqualifying-gate risk, so there are
-  zero external requests on this page. No fonts, no scripts, no stylesheets.
-
-  Two attributes drive the whole UI:
-    <html data-persona="td|supervisor|producer">  -> which framing of the finding is shown
-    .zone[data-state="empty|loading|ready|error"] -> which state each panel renders
-
-  Every zone has all four states in the markup and CSS switches between them, so an error
-  is a designed state rather than a blank div.
--->
-<html lang="en" data-persona="{{ initial_persona|default('td') }}" data-force-picker="{{ '1' if force_picker else '0' }}">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="dark">
-<title>Second Unit — SH042 lighting slip</title>
-<meta name="description" content="An agentic second unit for the render farm: it watches, diagnoses, forecasts the production impact, and asks before it writes.">
-<style>
-/* ---------------------------------------------------------------- studio console */
-:root{
-  --bg:#080a0d; --bg2:#0d1116; --panel:#11161d; --panel2:#161c25;
-  --line:#212a36; --line2:#2c3745;
-  --ink:#e8eef6; --ink2:#a8b6c6; --ink3:#6f7d8d;
-  --amber:#f5a623; --amber-dim:#8a5f14;
-  --crit:#ff5f56; --crit-dim:#4a1d1a;
-  --ok:#3fb950; --ok-dim:#173a1d;
-  --cyan:#5ecbe8; --violet:#a78bfa;
-  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
-  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-  --r:10px;
-}
-*{box-sizing:border-box}
-html,body{margin:0;padding:0;overflow-x:hidden}
-body{
-  background:
-    radial-gradient(1200px 600px at 50% -10%, #131a24 0%, transparent 60%),
-    var(--bg);
-  color:var(--ink); font-family:var(--sans);
-  font-size:16px; line-height:1.5;
-  -webkit-font-smoothing:antialiased;
-  padding:0 0 4rem;
-}
-a{color:var(--cyan)}
-.wrap{max-width:940px;margin:0 auto;padding:0 clamp(.75rem,3vw,1.5rem)}
-
-/* ---------------------------------------------------------------- top bar */
-.topbar{
-  position:sticky; top:0; z-index:20;
-  background:rgba(8,10,13,.92); backdrop-filter:blur(8px);
-  border-bottom:1px solid var(--line);
-}
-.topbar-in{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;padding-top:.7rem;padding-bottom:.7rem}
-.brand{font-family:var(--mono);font-size:.9rem;letter-spacing:.22em;font-weight:600;white-space:nowrap}
-.brand b{color:var(--amber);font-weight:600}
-.brand small{display:block;letter-spacing:.06em;font-size:.62rem;color:var(--ink3);margin-top:2px}
-.spacer{flex:1 1 auto}
-
-/* persona toggle: a segmented control, not a nav */
-.personas{display:flex;gap:2px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:3px}
-.personas button{
-  appearance:none;background:transparent;border:0;color:var(--ink2);
-  font:inherit;font-size:.78rem;padding:.34rem .7rem;border-radius:999px;cursor:pointer;
-  white-space:nowrap;
-}
-.personas button:hover{color:var(--ink)}
-.personas button[aria-selected="true"]{background:var(--amber);color:#1a1205;font-weight:600}
-.personas button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
-
-.freshness{display:flex;align-items:center;gap:.4rem;font-family:var(--mono);font-size:.7rem;color:var(--ink2);white-space:nowrap}
-.dot{width:8px;height:8px;border-radius:50%;background:var(--ink3);flex:none}
-.dot.live{background:var(--ok);box-shadow:0 0 0 0 rgba(63,185,80,.7);animation:pulse 2s infinite}
-.dot.busy{background:var(--amber);animation:pulse 1s infinite}
-.dot.bad{background:var(--crit)}
-@keyframes pulse{70%{box-shadow:0 0 0 7px rgba(63,185,80,0)}100%{box-shadow:0 0 0 0 rgba(63,185,80,0)}}
-@media (prefers-reduced-motion:reduce){.dot{animation:none!important}}
-
+{% extends "_base.html" %}
+{#
+  The investigation. This was the entire product; it is now one page of four, so its chrome
+  (top bar, persona control, the old modal chooser) has moved to the shared layout and the
+  /start page. What remains below is genuinely specific to watching a pipeline run: the
+  stage stream, the evidence panel, the counterfactual, the approval gate and the briefing.
+#}
+{% block head_extra %}
+/* top bar + persona toggle styles now in the shared layout */
 /* ---------------------------------------------------------------- zones */
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);margin:1rem 0}
 .panel-head{
@@ -184,53 +112,7 @@ a{color:var(--cyan)}
 .briefing .berr{flex:1 1 100%; color:var(--red); font-size:.8rem; display:none}
 .briefing[data-error="1"] .berr{display:block}
 
-/* ---------------------------------------------------------------- picker
-   A "who's viewing?" screen, NOT authentication: no accounts, nothing to sign into.
-   It earns its place by stating the thesis before the agent runs — three people need the
-   same answer in three different languages.
-
-   Two hard rules, both protecting the hosted-URL judging gate:
-     - the console is already rendered BEHIND this overlay, so a judge who dismisses it
-       (or whose JS never runs) is looking at the finding, not a blank wall
-     - it is always skippable, and ?persona= bypasses it entirely
-*/
-.picker{
-  position:fixed; inset:0; z-index:50; display:none;
-  background:color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter:blur(6px) saturate(120%);
-  align-items:center; justify-content:center; padding:1.25rem;
-}
-html[data-picker="1"] .picker{display:flex}
-.picker-card{
-  width:min(46rem,100%); background:var(--panel); border:1px solid var(--line);
-  border-radius:14px; padding:1.75rem 1.5rem 1.25rem; box-shadow:0 24px 60px #0009;
-}
-.picker-card h2{font-size:1.35rem; letter-spacing:-.01em; margin-bottom:.35rem}
-.picker-card p.lede{color:var(--dim); font-size:.92rem; margin-bottom:1.25rem; max-width:44ch}
-.picker-grid{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.6rem}
-@media (max-width:640px){ .picker-grid{grid-template-columns:1fr} }
-.picker-grid button{
-  text-align:left; background:var(--bg); border:1px solid var(--line); border-radius:10px;
-  padding:.85rem .9rem; color:var(--ink); cursor:pointer; display:grid; gap:.25rem;
-}
-.picker-grid button:hover{border-color:var(--amber)}
-.picker-grid button:focus-visible{outline:2px solid var(--cyan); outline-offset:2px}
-.picker-grid .role{font-weight:650; font-size:.95rem}
-.picker-grid .who{color:var(--dim); font-size:.78rem; line-height:1.35}
-.picker-foot{display:flex; align-items:center; gap:.75rem; margin-top:1.1rem}
-.picker-foot button{
-  background:none; border:none; color:var(--dim); cursor:pointer; font-size:.85rem;
-  text-decoration:underline; text-underline-offset:3px; padding:.3rem 0;
-}
-.picker-foot button:hover{color:var(--ink)}
-.picker-foot small{color:var(--dim); font-size:.75rem; margin-left:auto}
-
-/* per-persona: exactly one framing visible, and it works before JS runs */
-.frame{display:none}
-html[data-persona="td"] .frame[data-persona="td"],
-html[data-persona="supervisor"] .frame[data-persona="supervisor"],
-html[data-persona="producer"] .frame[data-persona="producer"]{display:block}
-
+/* the chooser overlay became the /start page */
 /* ---------------------------------------------------------------- stages */
 .stages{list-style:none;margin:0;padding:0}
 .stage{border-bottom:1px solid var(--line)}
@@ -365,56 +247,11 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
 .ev .qcount{display:none;font-family:var(--mono);font-size:.7rem;color:var(--ink3)}
 .hide-queries .ev .q,.hide-queries .ev .obs,.hide-queries .ev .deeplink{display:none}
 .hide-queries .ev .qcount{display:block}
-</style>
-</head>
-<body>
-<a class="sr" href="#verdict">Skip to the verdict</a>
 
-<!-- Persona chooser. Rendered after the console so the finding is already on the page
-     underneath; see the .picker comment in the stylesheet for why that matters. -->
-<div class="picker" id="picker" role="dialog" aria-modal="true" aria-labelledby="pickerTitle">
-  <div class="picker-card">
-    <h2 id="pickerTitle">Who's looking at the farm?</h2>
-    <p class="lede">Same investigation, same evidence — reported in the language of whoever
-      has to act on it. You can switch at any time.</p>
-    <div class="picker-grid">
-      <button type="button" data-pick="td">
-        <span class="role">Pipeline TD</span>
-        <span class="who">The engineer who keeps the farm running. Nodes, PromQL, log lines.</span>
-      </button>
-      <button type="button" data-pick="supervisor">
-        <span class="role">VFX Supervisor</span>
-        <span class="who">Accountable for the shots. Which one is late, why, and the fix.</span>
-      </button>
-      <button type="button" data-pick="producer">
-        <span class="role">Producer</span>
-        <span class="who">Owns the schedule. Does this make the review, and who is idle.</span>
-      </button>
-    </div>
-    <div class="picker-foot">
-      <button type="button" id="pickSkip">Just show me the incident</button>
-      <small>No account, nothing to sign in to.</small>
-    </div>
-  </div>
-</div>
+{% endblock %}
 
-<header class="topbar"><div class="wrap topbar-in">
-  <div class="brand">SECOND <b>UNIT</b><small>render farm · second unit</small></div>
-  <div class="spacer"></div>
-  <!-- The persona toggle is the whole thesis in one control: one investigation, three
-       framings. It is read-only and client-side — explicitly NOT an auth boundary. -->
-  <div class="personas" role="tablist" aria-label="Frame the finding for">
-    <button type="button" role="tab" data-persona="td"
-      aria-selected="{{ 'true' if initial_persona|default('td') == 'td' else 'false' }}">TD</button>
-    <button type="button" role="tab" data-persona="supervisor"
-      aria-selected="{{ 'true' if initial_persona|default('td') == 'supervisor' else 'false' }}">Supervisor</button>
-    <button type="button" role="tab" data-persona="producer"
-      aria-selected="{{ 'true' if initial_persona|default('td') == 'producer' else 'false' }}">Producer</button>
-  </div>
-  <div class="freshness"><span class="dot live" id="dot"></span><span id="statusText">recorded run</span></div>
-</div></header>
+{% block content %}
 
-<main class="wrap">
 
   <!-- ============================================================ 1. VERDICT -->
   <section class="zone" id="verdictZone" data-state="ready" aria-live="polite">
@@ -587,8 +424,58 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
     {{ scenario.department }} · review deadline {{ scenario.review_deadline }}.<br>
     No accounts, no tracking, no external requests from this page.
   </footer>
-</main>
+
+{% endblock %}
+
+{% block docs %}
+<h3>Investigation</h3>
+<p>Five agent stages run in a fixed order, and each hands the next a <b>typed object</b>
+rather than prose — so a stage cannot quietly reinterpret its predecessor's opinion.</p>
+
+<h4>What you are watching</h4>
+<ul>
+  <li><b>Watchtower</b> — what is abnormal. Breadth only; it is explicitly told not to
+      diagnose, because a premature guess poisons everything downstream.</li>
+  <li><b>Diagnostician</b> — why, and it must rule things <i>out</i>. The asset pipeline
+      emits warnings all through the incident; they start <i>before</i> it, so they are
+      noise. Watch for that row.</li>
+  <li><b>Impact Forecaster</b> — the delivery consequence. The arithmetic is a Python
+      function, not the model, and it <b>refuses</b> inputs it cannot believe.</li>
+  <li><b>Remediation Planner</b> — the fix and the proposed write-back. It holds
+      <b>no write tools at all</b>.</li>
+</ul>
+
+<h4>Where the numbers come from</h4>
+<p>Every claim carries the tool call and the exact <code>PromQL</code> or <code>LogQL</code>
+that produced it, against a live Grafana Cloud stack through the Grafana MCP server. Nothing
+is cached; nothing is mocked. The review deadline is read from telemetry
+(<code>shot_review_deadline_seconds</code>) — a commitment the agent discovers rather than
+one we hand it.</p>
+
+<h4>The approval gate</h4>
+<p>Nothing is written until you approve it, and that is structural rather than a promise:
+the stage that proposes writes has no mutating tools, and the executor that does is only
+constructed once an approval record exists naming who approved which items. An unapproved
+run has no privileged surface at all.</p>
+<div class="dnote">Approved writes are then checked <b>out of band</b> — through Grafana's
+HTTP API, not the MCP tools the agent just used — and disagreements are reported. See the
+<a href="/agent">Agent</a> page.</div>
+
+<h4>Recorded vs live</h4>
+<p>The page loads a real recorded run, so there is a finding on first paint. Add
+<code>?live=1</code> to run the agents now against current telemetry — that costs Vertex
+quota and takes roughly three minutes. If quota is exhausted the stream says so and points
+back here rather than failing silently.</p>
+
+<h4>The dailies briefing</h4>
+<p>The same finding, spoken, in about fifty seconds. The script is composed in Python from
+the stage outputs — not generated by a sixth model call — so every number in it has already
+been computed and verified.</p>
+{% endblock %}
+
+{% block scripts %}
 <script>
+
 /* ============================================================================
    Second Unit — client. Vanilla, no framework, no build.
 
@@ -602,12 +489,10 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
 
 const RECORDED = {{ fixture|tojson }};
 const GRAFANA  = {{ grafana_url|tojson }};
-const $ = (id) => document.getElementById(id);
+/* $() comes from the shared layout */
 
-/* Agent output reaches the DOM here — root causes, log lines, tool arguments. It is model
-   output relayed from a live stack, so it is escaped rather than trusted, everywhere. */
-const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g,
-  (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+/* esc() comes from the shared layout */
+
 
 const STATE = {
   runId: null, es: null, live: false, done: false, failed: false,
@@ -617,14 +502,15 @@ const STATE = {
 /* ------------------------------------------------------------------ chrome */
 function zone(id, state) { $(id).dataset.state = state; }
 function status(text, kind) {
-  $("statusText").textContent = text;
-  $("dot").className = "dot " + (kind || "");
+  /* The freshness indicator lives in the shared top bar now, so go through its helper
+     instead of reaching for #statusText/#dot — those IDs belonged to this page's old
+     chrome. Without this, every status update throws on a null element. */
+  fresh(kind || "", text);
 }
 
 /* ------------------------------------------------------------------ persona */
 const PERSONA_QUERIES = { td: true, supervisor: true, producer: false };
-function applyPersona(p) {
-  document.documentElement.dataset.persona = p;
+function applyPersonaView(p) {
   document.querySelectorAll(".personas button").forEach((b) =>
     b.setAttribute("aria-selected", String(b.dataset.persona === p)));
   /* The toggle is not only wording. A TD wants the PromQL; a producer wants the decision.
@@ -642,74 +528,13 @@ function setQueries(show) {
   $("evZone").classList.toggle("hide-queries", !show);
   $("btnEvToggle").textContent = show ? "Hide queries" : "Show queries";
 }
-document.querySelectorAll(".personas button").forEach((b) =>
-  b.addEventListener("click", () => { applyPersona(b.dataset.persona); rememberPersona(b.dataset.persona); }));
+/* The persona changes in the shared top bar, which emits this event. The page only
+   re-renders for the new framing: one owner for "who is this", one for "what that looks
+   like here". */
+document.addEventListener("persona", (e) => applyPersonaView(e.detail));
 
-/* ---- the persona chooser -------------------------------------------------
-   Shown when we have no idea who is looking: first visit, or an explicit /start.
-   NEVER shown when ?persona= says who they are, because that is a deliberate link.
-   Every localStorage access is wrapped: private windows and blocked site data throw on
-   access, and a chooser that crashes the page would be worse than no chooser. */
-const PICKER_KEY = "second-unit:persona";
-const PERSONAS = ["td", "supervisor", "producer"];
-function storedPersona() {
-  try {
-    const v = localStorage.getItem(PICKER_KEY);
-    return PERSONAS.includes(v) ? v : null;
-  } catch (_) { return null; }
-}
-/* THE single source of truth for "whose framing is this?".
-   A deliberate ?persona= link wins; then a remembered choice; then the server-rendered
-   default. boot() and the picker both call this — the first version had boot() making its
-   own decision (`?persona= || "td"`), which silently overwrote a remembered producer with
-   td on every return visit. One resolver, one answer. */
-function resolvePersona() {
-  const asked = new URLSearchParams(location.search).get("persona");
-  if (PERSONAS.includes(asked)) return asked;
-  const known = storedPersona();
-  if (known) return known;
-  const server = document.documentElement.dataset.persona;
-  return PERSONAS.includes(server) ? server : "td";
-}
-function rememberPersona(p) {
-  try { localStorage.setItem(PICKER_KEY, p); } catch (_) { /* nothing to do */ }
-}
-function closePicker() { document.documentElement.dataset.picker = "0"; }
+/* the chooser is now the /start page; the top-bar chip links to it */
 
-(function initPersona() {
-  const asked = new URLSearchParams(location.search).get("persona");
-  const forced = document.documentElement.dataset.forcePicker === "1";
-  const known = storedPersona();
-
-  applyPersona(resolvePersona());
-  // Show the chooser only when we genuinely do not know who is looking: an explicit
-  // /start, or a first visit with no remembered choice and no deliberate link.
-  const skipped = (() => {
-    try { return sessionStorage.getItem(PICKER_KEY + ":skipped") === "1"; }
-    catch (_) { return false; }
-  })();
-  if (forced || (!asked && !known && !skipped)) {
-    document.documentElement.dataset.picker = "1";
-  } else {
-    closePicker();
-  }
-})();
-
-document.querySelectorAll(".picker-grid button").forEach((b) =>
-  b.addEventListener("click", () => {
-    applyPersona(b.dataset.pick);
-    rememberPersona(b.dataset.pick);
-    closePicker();
-  }));
-$("pickSkip").addEventListener("click", () => {
-  /* Deliberately does NOT remember a choice: skipping is "leave me alone now", not
-     "I am a TD forever". It does stop the overlay reappearing this session. */
-  try { sessionStorage.setItem(PICKER_KEY + ":skipped", "1"); } catch (_) {}
-  closePicker();
-});
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && document.documentElement.dataset.picker === "1") closePicker();
-});
 $("btnEvToggle").addEventListener("click", () =>
   setQueries($("evZone").classList.contains("hide-queries")));
 
@@ -1184,13 +1009,13 @@ function hydrateRecorded() {
      the verdict is stamped "recorded". */
   STATE.live = false;
   for (const item of RECORDED.events) handle(item.event);
-  applyPersona(document.documentElement.dataset.persona);
+  applyPersonaView(document.documentElement.dataset.persona);
   status("recorded run", "live");
 }
 
 (function boot() {
   const demo = new URLSearchParams(location.search).get("demo");
-  applyPersona(resolvePersona());   // NOT `?persona= || "td"` — see resolvePersona
+  applyPersonaView(document.documentElement.dataset.persona);
 
   if (demo === "empty") {
     ["verdictZone", "stagesZone", "evZone", "wbZone"].forEach((z) => zone(z, "empty"));
@@ -1215,7 +1040,7 @@ function hydrateRecorded() {
     handle({ type: "stage_failed", stage: "diagnostician",
       error: "unparseable output: ValidationError: 3 validation errors for Diagnosis" });
     handle({ type: "run_failed", error: "pipeline halted at diagnostician" });
-    applyPersona(document.documentElement.dataset.persona);
+    applyPersonaView(document.documentElement.dataset.persona);
     return;
   }
 
@@ -1228,6 +1053,6 @@ function hydrateRecorded() {
     .then((d) => { if (d) STATE.runId = d.run_id; })
     .catch(() => { /* approval will surface the failure on click */ });
 })();
+
 </script>
-</body>
-</html>
+{% endblock %}

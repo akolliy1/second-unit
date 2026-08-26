@@ -83,22 +83,42 @@ def next_review_deadline(hours_from_now: float = REVIEW_HOURS_FROM_NOW) -> str:
     return target.replace(second=0, microsecond=0).isoformat(timespec="minutes")
 
 
+#: Set when published_review_deadline had to fall back, so callers can SAY SO.
+deadline_fallback_reason: Optional[str] = None
+
+
 def published_review_deadline(shot: str = "SH042") -> str:
     """Read the review deadline the production tracker publishes for `shot`.
 
     This is the honest shape: the agent discovers the commitment from telemetry rather
     than being handed a number by its own harness.
+
+    The fallback is DELIBERATELY NOISY. An earlier version swallowed the failure and
+    returned "now + 3 hours", which is plausible, wrong, and silent — the forecaster then
+    reported that the shot comfortably made a deadline that had in fact already passed.
+    A wrong deadline invalidates every number downstream of it, so if we cannot read the
+    real one, that has to be visible rather than inferred later from a confusing verdict.
     """
+    global deadline_fallback_reason
+    deadline_fallback_reason = None
     from datetime import datetime, timezone
     try:
         from . import fleet
         rows = fleet._prom_query(f'shot_review_deadline_seconds{{shot="{shot}"}}')
-        if rows:
+        if not rows:
+            deadline_fallback_reason = (
+                f"shot_review_deadline_seconds{{shot=\"{shot}\"}} returned no series — "
+                f"is the seeder running with --loop?")
+        else:
             ts = float(rows[0]["value"][1])
             return datetime.fromtimestamp(ts, timezone.utc).astimezone().isoformat(
                 timespec="minutes")
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as exc:  # noqa: BLE001
+        deadline_fallback_reason = f"{type(exc).__name__}: {str(exc)[:140]}"
+
+    print(f"   !! could not read the published review deadline "
+          f"({deadline_fallback_reason}); falling back to now+{REVIEW_HOURS_FROM_NOW}h. "
+          f"Every forecast below is against a MADE-UP deadline.")
     return next_review_deadline()
 
 

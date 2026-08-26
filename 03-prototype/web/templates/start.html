@@ -1,0 +1,308 @@
+{% extends "_base.html" %}
+{#
+  /start — pick a viewing lens, then go to the Overview.
+
+  This is not authentication and the page says so in as many words. Three cards, one link
+  past them, and a live line of farm status underneath so the page is worth something
+  before any choice is made (blueprint §2).
+
+  The cards are real <a> links to `/?persona=…`, not buttons with a JS navigation. Two
+  reasons: keyboard and middle-click behave the way a link should, and if localStorage is
+  unavailable — private window, blocked site data — the query parameter still carries the
+  choice, so the page cannot be made useless by a storage exception. The click handler adds
+  the remembered choice on top; it does not own the navigation.
+#}
+
+{% block head_extra %}
+/* Long PromQL in the drawer has to wrap: the base's `.docs code` sets no wrapping and the
+   drawer is 360px wide, so an expression like
+   `sum by (node) (increase(render_node_gpu_ecc_errors_total[30m])) > 0` ran past the edge
+   and was clipped. Page CSS is appended last inside the base stylesheet, so scoping the fix
+   here needs no change to _base.html. */
+.docs code{overflow-wrap:anywhere}
+
+/* ------------------------------------------- base-layout workaround (≤860px)
+   `_base.html` intends to hide the rail below 860px, but its
+   `@media (max-width:860px){ .rail{display:none} }` sits ABOVE the later
+   `.rail{display:flex; …}` component rule, and a media query adds no specificity — so the
+   component rule wins, the rail keeps `display:flex`, loses its named grid area (the
+   ≤860 areas are "top"/"main"/"docs") and becomes an implicit grid item. Measured at
+   390px: `main` gets 215px and the rail sits in a 174px implicit column on the right.
+   Re-stating the rule here fixes it for this page only, because page CSS is appended last
+   inside the base stylesheet. `html[data-nav="1"] .rail` is more specific, so the ☰
+   overlay still opens. The proper fix is a source-order change in _base.html, which is
+   outside the two files this task may edit and is reported rather than made. */
+@media (max-width:860px){ .rail{display:none} }
+
+.lede{max-width:64ch; color:var(--ink2); font-size:.95rem; margin:.2rem 0 1.1rem}
+.lede b{color:var(--ink)}
+
+/* --------------------------------------------------------------- role cards
+   Large targets: this is the one screen where the choice IS the content, so the cards get
+   the space usually spent on chrome. Grid, so three across becomes one down on a phone
+   without a second layout. */
+.roles{display:grid; gap:.75rem; grid-template-columns:repeat(3,minmax(0,1fr)); margin:0}
+@media (max-width:900px){ .roles{grid-template-columns:minmax(0,1fr)} }
+.role{
+  display:flex; flex-direction:column; gap:.5rem; min-height:15.5rem;
+  background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
+  padding:1.05rem 1rem 1rem; text-decoration:none; color:var(--ink);
+  position:relative; transition:border-color .12s ease, transform .12s ease;
+}
+.role:hover{border-color:var(--amber); transform:translateY(-2px)}
+.role:focus-visible{outline:2px solid var(--cyan); outline-offset:2px}
+.role .rtag{font-size:.64rem; letter-spacing:.11em; text-transform:uppercase; color:var(--ink3)}
+.role h3{margin:0; font-size:1.12rem; letter-spacing:-.015em}
+.role .who{margin:0; color:var(--ink2); font-size:.86rem}
+/* The list is top-aligned so the rules line up across all three cards; the call to
+   action is what gets pushed to the bottom instead. */
+.role .sees{list-style:none; margin:0; padding:.7rem 0 0; border-top:1px solid var(--line)}
+.role .sees li{font-size:.79rem; color:var(--ink2); display:flex; gap:.45rem; padding:.14rem 0}
+.role .sees li::before{content:"›"; color:var(--amber); flex:0 0 .6rem}
+.role .go{display:inline-flex; align-items:center; gap:.35rem; margin-top:auto;
+  padding-top:.7rem; font-size:.82rem; font-weight:650; color:var(--amber)}
+/* The lens already remembered gets marked, so returning here does not feel like starting
+   over — and so the "you are already viewing as X" fact is visible, not implied. */
+.role[data-current="1"]{border-color:var(--amber); box-shadow:inset 0 0 0 1px var(--amber-dim)}
+.role[data-current="1"] .rtag::after{content:" · current lens"; color:var(--amber)}
+
+.skiprow{display:flex; align-items:center; gap:.9rem; flex-wrap:wrap; margin:1rem 0 0}
+.skiprow a.skip{color:var(--cyan); font-size:.86rem}
+.skiprow small{color:var(--ink3); font-size:.76rem}
+
+/* ------------------------------------------------------------- farm summary */
+.farm{display:flex; align-items:flex-start; gap:.7rem; margin:0}
+.farm .gl{flex:0 0 1rem; text-align:center; color:var(--ink3)}
+.farm .txt{min-width:0; font-size:.86rem; color:var(--ink2); overflow-wrap:anywhere}
+.farm .txt b{color:var(--ink); font-weight:650}
+.farm.bad{border-color:var(--crit)}
+.farm.bad .gl{color:var(--crit)}
+.farm.warn .gl{color:var(--amber)}
+.farm.ok .gl{color:var(--ok)}
+.farm .sub{display:block; color:var(--ink3); font-size:.76rem; margin-top:.2rem}
+{% endblock %}
+
+{% block content %}
+
+<section class="sect">
+  <p class="lede">
+    <b>This is a viewing lens, not a login</b> — there is nothing to sign into, no account,
+    and no permission changes: the same investigation and the same evidence, reported in the
+    language of whoever has to act on it. Pick one, or skip straight to the farm.
+  </p>
+
+  <div class="roles">
+    <!-- href carries the choice as well as localStorage; see the template comment. -->
+    <a class="role" href="/?persona=td" data-pick="td">
+      <span class="rtag">engineering</span>
+      <h3>Pipeline TD</h3>
+      <p class="who">The engineer who keeps the farm running.</p>
+      <ul class="sees">
+        <li>Nodes, throughput, queue depth — the machine-level cause</li>
+        <li>The exact PromQL and LogQL behind every claim</li>
+        <li>Ruled-out hypotheses, not just the accepted one</li>
+        <li>Drain / requeue actions and what they cost the pool</li>
+      </ul>
+      <span class="go">Use this lens →</span>
+    </a>
+
+    <a class="role" href="/?persona=supervisor" data-pick="supervisor">
+      <span class="rtag">shots</span>
+      <h3>VFX Supervisor</h3>
+      <p class="who">Accountable for the shots in flight.</p>
+      <ul class="sees">
+        <li>Which shot is late, by how long, and why</li>
+        <li>Whether the cause is the shot or the farm underneath it</li>
+        <li>Frames remaining, completion rate, ETA against review</li>
+        <li>The proposed fix and whether it needs creative rework</li>
+      </ul>
+      <span class="go">Use this lens →</span>
+    </a>
+
+    <a class="role" href="/?persona=producer" data-pick="producer">
+      <span class="rtag">schedule</span>
+      <h3>Producer</h3>
+      <p class="who">Owns the schedule and the client review.</p>
+      <ul class="sees">
+        <li>Does this make the review, and by how much it misses</li>
+        <li>Who is idle, and what waiting actually costs</li>
+        <li>Plain language — no node names, no queries</li>
+        <li>One decision: approve the fix, or don't</li>
+      </ul>
+      <span class="go">Use this lens →</span>
+    </a>
+  </div>
+
+  <div class="skiprow">
+    <a class="skip" href="/">Skip, just show me the farm →</a>
+    <small>You can change lens any time from the top bar. Nothing about the farm data
+      changes with it.</small>
+  </div>
+</section>
+
+<section class="sect">
+  <h2>The farm, right now</h2>
+  <div class="card farm" id="farmCard">
+    <span class="gl" aria-hidden="true">●</span>
+    <span class="txt" id="farmLine">reading the farm…<span class="sub">one call to
+      <span class="mono">/api/fleet</span> — the same sweep the Overview uses</span></span>
+  </div>
+</section>
+{% endblock %}
+
+{% block docs %}
+<h3>Role</h3>
+<p>An entry page for choosing how the console words its findings. It is the only screen in
+the product whose content is a choice, which is why it is a page rather than a modal.</p>
+
+<h4>What this is not</h4>
+<p>Not authentication. There are no accounts, no credentials, and no access control anywhere
+in this prototype — a stranger with the URL sees everything, by design. Choosing a lens
+changes <em>wording and level of detail</em>, never which data is fetched or what the agent
+is allowed to do.</p>
+<p class="dnote">The real permission boundary is elsewhere and is not ours: the Grafana
+service-account token carries <code>annotations:write</code>,
+<code>dashboards:write</code> and <code>alert.rules:write</code>, and Grafana enforces it
+server-side. App-level roles on top of that would be decoration over someone else's ACL.</p>
+
+<h4>What clicking a card does</h4>
+<ul>
+  <li>Writes the choice to <code>localStorage["second-unit:persona"]</code> — the value is
+      one of <code>td</code>, <code>supervisor</code>, <code>producer</code></li>
+  <li>Navigates to <code>/?persona=…</code>, so the choice also travels in the URL</li>
+</ul>
+<p>Both, because either alone has a hole: storage throws in a private window or with site
+data blocked, and a URL parameter is forgotten on the next visit. The card is a plain link,
+so it still works with JavaScript broken — the handler only adds the remembered value.</p>
+<p><code>?persona=</code> on any page overrides the remembered choice for that visit, which
+is what makes deep links for a demo reliable.</p>
+
+<h4>The farm summary line</h4>
+<p>One <code>GET /api/fleet</code> on load. Same endpoint, same deterministic sweep as the
+Overview's triage strip: two Prometheus instant queries and division in Python, no model in
+the path. It reports the number of shots in flight, how many are forecast to miss the
+published review deadline, and the worst one by slip.</p>
+<p class="dnote">It is fetched once rather than polled — this page is somewhere a judge
+spends seconds, and the Overview owns the live view. If the sweep fails, the reason is
+printed here; if it returns no shots, the line says the seeder is probably not running
+rather than implying a quiet farm.</p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+"use strict";
+/* ==========================================================================
+   /start client. Two jobs: remember the chosen lens on the way out, and show one honest
+   line about the farm on the way in.
+   ========================================================================== */
+
+/* Mark the card matching the lens already in effect. resolvePersona() comes from the base
+   layout so this page cannot disagree with the chip in the top bar about who is viewing. */
+(function markCurrent(){
+  const current = resolvePersona();
+  document.querySelectorAll(".role").forEach((a) => {
+    if (a.dataset.pick === current) a.dataset.current = "1";
+  });
+})();
+
+/* The link navigates on its own; this only records the choice. Wrapped because storage
+   access itself throws in some contexts, and a thrown exception here would cancel nothing
+   but would show up as a console error on a page whose whole job is to be simple. */
+document.querySelectorAll(".role").forEach((a) => {
+  a.addEventListener("click", () => {
+    try { localStorage.setItem("second-unit:persona", a.dataset.pick); }
+    catch (_) { /* the ?persona= in the href still carries the choice */ }
+  });
+});
+
+/* ------------------------------------------------------- one line of farm truth */
+const STATUS_TEXT = {critical:"critical", at_risk:"at risk", on_track:"on track",
+                     done:"done", unknown:"unknown"};
+function fmtHours(h){
+  if (h === null || h === undefined || isNaN(h)) return "—";
+  const mins = Math.round(Math.abs(h) * 60);
+  const s = mins >= 60 ? Math.floor(mins/60) + "h " + String(mins%60).padStart(2,"0") + "m"
+                       : mins + "m";
+  return (h < 0 ? "-" : "") + s;
+}
+function fmtClock(iso){
+  /* The API hands back an ISO string with an offset; a producer reads "Wed 22:29", not
+     "2026-08-26T22:29+01:00". The raw value is kept in the title attribute, not dropped. */
+  if (!iso) return "unknown";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return String(iso);
+  return d.toLocaleString([], {weekday:"short", hour:"2-digit", minute:"2-digit"});
+}
+function line(kind, glyph, html){
+  $("farmCard").className = "card farm " + kind;
+  $("farmCard").querySelector(".gl").textContent = glyph;
+  $("farmLine").innerHTML = html;
+}
+
+(async function farmSummary(){
+  let data;
+  try {
+    const r = await fetch("/api/fleet", {headers:{"Accept":"application/json"}});
+    data = await r.json().catch(() => null);
+    if (!r.ok) throw new Error((data && (data.error || data.detail)) || ("HTTP " + r.status));
+  } catch (e){
+    line("bad", "✗",
+      "<b>The fleet sweep is not answering.</b><span class=\"sub\">" +
+      esc(e.message || String(e)) + " — the console still loads; the triage strip will say " +
+      "the same thing rather than render an empty farm.</span>");
+    fresh("bad", "fleet call failed");
+    return;
+  }
+
+  const shots = Array.isArray(data.shots) ? data.shots : [];
+  const ex = Array.isArray(data.exceptions) ? data.exceptions : [];
+  if (data.error){
+    line("bad", "✗", "<b>Fleet sweep reported a problem.</b><span class=\"sub\">" +
+      esc(data.error) + "</span>");
+    fresh("bad", "sweep error");
+    return;
+  }
+  if (!shots.length){
+    line("bad", "✗",
+      "<b>No shots in flight.</b><span class=\"sub\">The sweep succeeded and returned " +
+      "nothing, which for this farm means <span class=\"mono\">shot_frames_remaining</span> " +
+      "has no series — the seeder is most likely stopped. Not a farm with no work in it." +
+      "</span>");
+    fresh("warn", "no shots in flight");
+    return;
+  }
+
+  /* The API already sorts worst-first, so the head of the list is the shot to name. */
+  const worst = shots.find((s) => s.status === "critical" || s.status === "at_risk");
+  const dl = '<span title="' + esc(data.deadline || "") + '">' +
+             esc(fmtClock(data.deadline)) + "</span>";
+  const ph = data.deadline_is_placeholder
+    ? " <span class=\"sub\">Deadline is a placeholder (" +
+      esc(data.deadline_placeholder_reason || "reason not reported") +
+      "), so the slip is arithmetic rather than a schedule fact.</span>"
+    : "";
+
+  if (worst){
+    line("warn", "▲",
+      "<b>" + shots.length + " shots in flight · " + ex.length + " forecast to miss review</b> — " +
+      "worst is <b>" + esc(worst.shot) + "</b> (" + esc(worst.department || "—") + "), " +
+      esc(STATUS_TEXT[worst.status] || worst.status) + ", " +
+      fmtHours(worst.slip_hours) + " past the " + dl + " deadline." +
+      "<span class=\"sub\">Pick a lens above and the Overview explains that in your " +
+      "language.</span>" + ph);
+    fresh("warn", "exception on " + worst.shot);
+  } else {
+    const done = shots.filter((s) => s.status === "done").length;
+    const unk = shots.filter((s) => s.status === "unknown").length;
+    line("ok", "✓",
+      "<b>" + shots.length + " shots in flight · none forecast to miss review</b> (deadline " +
+      dl + ")." +
+      "<span class=\"sub\">" + done + " pass" + (done === 1 ? "" : "es") + " complete" +
+      (unk ? ", " + unk + " with no recent completions (reported as unknown, not on track)" : "") +
+      ". This scenario replays a ~4h incident loop, so a calm farm here means the fault has " +
+      "not been injected yet — the Overview says when the next one lands.</span>" + ph);
+    fresh("live", "swept · no exception");
+  }
+})();
+</script>
+{% endblock %}

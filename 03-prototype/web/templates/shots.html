@@ -1,0 +1,485 @@
+{% extends "_base.html" %}
+{#
+  /shots — Delivery.
+
+  The supervisor's question: "does each pass make its review?" One row per shot, and the
+  answer readable before any number is read — status colour on the row, and a bar of the
+  forecast ETA against the published deadline with the late part drawn past the deadline
+  line in red. Numbers are there to justify the colour, not to be scanned.
+
+  Everything on this page comes from GET /api/fleet, which is Prometheus queries plus
+  arithmetic in fleet.py — no model is involved, so the page cannot show a shot that does
+  not exist or two different ETAs for the same shot.
+
+  The states that matter here are the honest ones, and they are all designed rather than
+  emergent: the sweep failed (`error`), the sweep returned nothing (`shots == []`), the
+  deadline could not be read from telemetry (`deadline_is_placeholder`), the pass is
+  finished (`done`, which is good news), and no completions were seen in the window
+  (`unknown`, which is NOT good news and must never look like "on track").
+#}
+
+{% block head_extra %}
+/* ============================================================ /shots
+   Zone states: every panel carries all of its states in the markup and CSS picks one, so
+   an error or an empty sweep is a designed screen rather than a blank div. */
+.zone > .st{display:none}
+.zone[data-state="loading"] > .st-loading,
+.zone[data-state="ready"]   > .st-ready,
+.zone[data-state="empty"]   > .st-empty,
+.zone[data-state="error"]   > .st-error{display:block}
+
+/* ---------------------------------------------------------- deadline banner */
+.dlcard{display:flex; gap:.9rem; align-items:flex-start; flex-wrap:wrap}
+.dlcard .big{font-family:var(--mono); font-size:clamp(1.3rem,4vw,1.7rem); font-weight:700;
+  color:var(--ink); letter-spacing:-.01em; line-height:1.1}
+.dlcard .k{font-family:var(--mono); font-size:.62rem; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--ink3); display:block; margin-bottom:.2rem}
+.dlcard .why{flex:1 1 18rem; min-width:0; font-size:.82rem; color:var(--ink2); margin:0}
+.dlcard .why code{font-family:var(--mono); font-size:.74rem; color:var(--cyan);
+  overflow-wrap:anywhere}
+
+/* A made-up deadline invalidates every forecast under it, so it gets the loudest
+   treatment on the page rather than a footnote. */
+.placeholder{border:1px solid var(--crit); border-left-width:3px;
+  background:rgba(255,95,86,.08); border-radius:var(--r); padding:.8rem .9rem;
+  margin:0 0 .75rem}
+.placeholder .t{color:var(--crit); font-weight:700; font-size:.9rem}
+.placeholder .d{font-size:.82rem; color:var(--ink2); margin-top:.25rem}
+.placeholder .r{font-family:var(--mono); font-size:.72rem; color:var(--ink3);
+  margin-top:.35rem; overflow-wrap:anywhere}
+
+/* ------------------------------------------------------------- count tiles */
+.tile{background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
+  padding:.7rem .8rem; border-left:3px solid var(--tc,var(--line2))}
+.tile b{display:block; font-family:var(--mono); font-size:1.5rem; line-height:1.1;
+  color:var(--ink)}
+.tile span{display:block; font-size:.74rem; color:var(--ink3); margin-top:.15rem}
+.tile[data-k="exceptions"]{--tc:var(--crit)}
+.tile[data-k="unknown"]{--tc:var(--violet)}
+.tile[data-k="on_track"]{--tc:var(--ok)}
+.tile[data-k="done"]{--tc:var(--cyan)}
+
+/* ------------------------------------------------------------------- axis */
+.axis{position:relative; height:1.1rem; font-family:var(--mono);
+  font-size:.62rem; color:var(--ink3);
+  /* same inset as a row's track (card padding + the 3px status border), so the tick
+     labelling the deadline lands on the dashed line rather than near it */
+  margin:.2rem .85rem .5rem calc(.85rem + 3px)}
+.axis .l{position:absolute; left:0}
+.axis .r{position:absolute; right:0}
+.axis .m{position:absolute; transform:translateX(-50%); color:var(--amber);
+  white-space:nowrap}
+
+/* -------------------------------------------------------------- shot rows */
+.shots{display:grid; gap:.6rem}
+.shot{background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--sc);
+  border-radius:var(--r); padding:.75rem .85rem; min-width:0}
+.shot[data-status="critical"]{--sc:var(--crit)}
+.shot[data-status="at_risk"] {--sc:var(--amber)}
+.shot[data-status="on_track"]{--sc:var(--ok)}
+.shot[data-status="done"]    {--sc:var(--cyan)}
+.shot[data-status="unknown"] {--sc:var(--violet)}
+.shot[data-status="critical"]{background:linear-gradient(90deg,rgba(255,95,86,.07),transparent 40%),var(--panel)}
+
+.shead{display:flex; align-items:baseline; gap:.5rem; flex-wrap:wrap; min-width:0}
+.sid{font-family:var(--mono); font-size:1rem; font-weight:700; color:var(--ink)}
+.dept{font-size:.74rem; color:var(--ink3); text-transform:uppercase; letter-spacing:.08em}
+.spill{font-family:var(--mono); font-size:.6rem; letter-spacing:.1em; text-transform:uppercase;
+  border:1px solid var(--sc); color:var(--sc); border-radius:999px; padding:.1rem .45rem}
+.sverdict{flex:1 1 12rem; min-width:0; font-size:.86rem; color:var(--ink2); font-weight:600}
+.shot[data-status="critical"] .sverdict,
+.shot[data-status="at_risk"] .sverdict{color:var(--sc)}
+
+/* The bar. `now` is the left edge, the dashed line is that pass's review deadline, and the
+   fill is the forecast. Anything drawn to the RIGHT of the dashed line is late — which is
+   the whole question, answered without reading a number. */
+.track{position:relative; height:12px; border-radius:6px; background:#0a0d11;
+  border:1px solid var(--line); margin:.55rem 0 .2rem; overflow:hidden}
+.track .fill{position:absolute; inset:0 auto 0 0; background:var(--sc); opacity:.75;
+  border-radius:6px 0 0 6px}
+.track .over{position:absolute; top:0; bottom:0; background:var(--crit);
+  background-image:repeating-linear-gradient(45deg,rgba(0,0,0,.25) 0 3px,transparent 3px 6px)}
+.track .dl{position:absolute; top:-2px; bottom:-2px; width:0; border-left:2px dashed var(--amber)}
+/* unknown: visibly unresolved, and deliberately not the on-track green */
+.track.nodata{background-image:repeating-linear-gradient(45deg,
+  rgba(167,139,250,.22) 0 6px,transparent 6px 12px)}
+.track.complete .fill{width:100%; opacity:.35}
+
+.nums{display:flex; flex-wrap:wrap; gap:.15rem 1.1rem; margin:.45rem 0 0}
+.nums div{min-width:0}
+.nums .k{display:block; font-family:var(--mono); font-size:.58rem; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--ink3)}
+.nums .v{display:block; font-family:var(--mono); font-size:.84rem; color:var(--ink)}
+.nums .v.late{color:var(--crit)} .nums .v.spare{color:var(--ok)}
+.nums .v.none{color:var(--ink3)}
+.snote{font-size:.78rem; color:var(--ink3); margin:.4rem 0 0}
+@media (max-width:520px){
+  .nums{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.4rem .7rem}
+}
+
+/* Provenance: a TD wants the exact series, a producer does not. The persona is already on
+   <html> by the time this paints, so this needs no JS at all. */
+.prov{font-family:var(--mono); font-size:.68rem; color:var(--ink3); margin:.4rem 0 0;
+  overflow-x:auto; white-space:nowrap; padding-bottom:.2rem}
+html[data-persona="producer"] .prov{display:none}
+
+/* ------------------------------------------------------------ error/empty */
+.errbox{border:1px solid var(--crit); border-left-width:3px; background:rgba(255,95,86,.07);
+  border-radius:var(--r); padding:.85rem .9rem}
+.errbox .t{color:var(--crit); font-weight:700; font-size:.9rem}
+.errbox .m{font-family:var(--mono); font-size:.76rem; color:var(--ink2); margin-top:.35rem;
+  overflow-wrap:anywhere}
+.errbox .h{font-size:.82rem; color:var(--ink3); margin-top:.4rem}
+.emptybox{border:1px dashed var(--line2); border-radius:var(--r); padding:1rem;
+  color:var(--ink3); font-size:.86rem}
+.skel{height:64px; border-radius:var(--r); background:linear-gradient(90deg,
+  var(--panel),var(--panel2),var(--panel)); background-size:200% 100%;
+  animation:sh 1.4s linear infinite; margin-bottom:.6rem}
+@keyframes sh{to{background-position:-200% 0}}
+{% endblock %}
+
+{% block content %}
+
+<!-- ========================================================== 1. THE DEADLINE
+     Made visible as a fact of the production, not a number buried in a verdict: every
+     forecast on this page is measured against it, so it is stated once, at the top, with
+     where it came from. -->
+<section class="sect">
+  <h2>Published review deadline</h2>
+  <div id="placeholderBox" hidden>
+    <div class="placeholder">
+      <div class="t">⚠ This deadline is invented — every forecast below is untrustworthy</div>
+      <div class="d">The review deadline could not be read from telemetry, so the fleet sweep
+        fell back to a made-up time. ETAs and slips are still arithmetic, but they are
+        measured against a commitment nobody published. Treat nothing on this page as a
+        delivery answer until the series is readable again.</div>
+      <div class="r" id="placeholderReason">—</div>
+    </div>
+  </div>
+  <div class="card dlcard">
+    <div>
+      <span class="k">Review deadline</span>
+      <div class="big" id="dlTime">—</div>
+      <div class="dim mono" id="dlRel" style="font-size:.72rem">—</div>
+    </div>
+    <p class="why">Read from farm telemetry, not configured here:
+      <code>shot_review_deadline_seconds{shot="SH042"}</code>. The production tracker
+      publishes it; the agent discovers it. That is deliberate — a deadline the harness
+      hands its own agent proves nothing, and a wrong deadline invalidates every forecast
+      under it, so it is read from the same stack as the frame counts.</p>
+  </div>
+</section>
+
+<!-- ========================================================== 2. COUNTS -->
+<section class="sect">
+  <h2>Passes in flight</h2>
+  <div class="grid g4" id="tiles">
+    <div class="tile" data-k="exceptions"><b id="cExc">–</b><span>need attention</span></div>
+    <div class="tile" data-k="on_track"><b id="cOk">–</b><span>on track</span></div>
+    <div class="tile" data-k="unknown"><b id="cUnk">–</b><span>no completions in window</span></div>
+    <div class="tile" data-k="done"><b id="cDone">–</b><span>pass complete</span></div>
+  </div>
+</section>
+
+<!-- ========================================================== 3. THE ROWS -->
+<section class="sect">
+  <h2>Delivery forecast · exceptions first</h2>
+  <div class="zone" id="shotsZone" data-state="loading">
+
+    <div class="st st-ready">
+      <div class="axis" id="axis" aria-hidden="true">
+        <span class="l">now</span>
+        <span class="m" id="axisDl">review</span>
+        <span class="r" id="axisEnd"></span>
+      </div>
+      <div class="shots" id="shotRows"></div>
+      <p class="dim" style="font-size:.76rem;margin:.7rem 0 0">
+        One shared time axis. The dashed amber line is that pass's review deadline; fill past
+        it is slip. Rows are ordered worst-first by the sweep, not by shot name.
+      </p>
+    </div>
+
+    <div class="st st-loading">
+      <div class="skel"></div><div class="skel"></div><div class="skel"></div>
+    </div>
+
+    <div class="st st-empty">
+      <div class="emptybox">
+        <strong style="color:var(--ink2)">The sweep ran and found no shots.</strong>
+        <p style="margin:.4rem 0 0">This is not "the farm is idle" — it means
+          <code class="mono">shot_frames_remaining</code> returned no series. The seeder may
+          not be running, or the metric name changed. An empty strip that reads as good news
+          is the failure mode this page refuses to have.</p>
+      </div>
+    </div>
+
+    <div class="st st-error">
+      <div class="errbox">
+        <div class="t">✗ Triage unavailable</div>
+        <div class="m" id="shotsErrMsg">—</div>
+        <div class="h">No rows are shown because the sweep did not complete. Nothing here is
+          stale data presented as current: the last successful figures are discarded rather
+          than left on screen looking live.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<p class="dim" style="font-size:.74rem">
+  Source: <code class="mono">GET /api/fleet</code> → <code class="mono">fleet.fleet_status()</code>,
+  which is one Prometheus instant query per series through Grafana's datasource proxy plus
+  arithmetic in Python. No model is involved in any number on this page.
+  Refreshed every 20&nbsp;s.
+</p>
+{% endblock %}
+
+{% block docs %}
+<h3>Shots — Delivery</h3>
+<p>One row per render pass in flight, with the forecast that answers whether it makes its
+review. Ordered worst-first, so the top of the list is the work that needs a decision.</p>
+
+<h4>Where each number comes from</h4>
+<ul>
+  <li><code>frames left</code> — <code>shot_frames_remaining</code>, the raw gauge for that
+    shot's pass.</li>
+  <li><code>rate</code> — <code>sum by (shot) (rate(render_frames_completed_total[15m])) * 60</code>,
+    i.e. completions per minute over the last 15 minutes.</li>
+  <li><code>forecast ETA</code> — <code>now + frames left ÷ rate</code>. Straight division,
+    computed in <code>fleet.py</code>. It assumes the current rate holds; that assumption is
+    the forecast's only weakness and it is stated rather than hidden.</li>
+  <li><code>review deadline</code> — <code>shot_review_deadline_seconds{shot="SH042"}</code>,
+    read from telemetry. The production tracker publishes it; the agent discovers it.</li>
+  <li><code>slip</code> — <code>ETA − deadline</code>, in hours. Positive is late.</li>
+</ul>
+
+<h4>What makes it trustworthy</h4>
+<p>No model runs to build this page. The sweep is Prometheus queries and arithmetic
+(<code>fleet.py</code>), executed for every shot on every refresh, so the strip cannot
+invent a shot, invent an ETA, or disagree with itself between refreshes. The same code path
+feeds the Overview triage strip, so the two cannot drift.</p>
+
+<h4>Reading the status</h4>
+<ul>
+  <li><b>critical</b> — forecast more than an hour past review.</li>
+  <li><b>at risk</b> — forecast past review at all.</li>
+  <li><b>on track</b> — forecast lands before review.</li>
+  <li><b>pass complete</b> — zero frames left. The pass finished: good news, not a fault,
+    and drawn in a different colour from "on track" so the two are not confused.</li>
+  <li><b>no completions in window</b> — frames remain but no frame finished in the last 15
+    minutes, so there is no rate to divide by and <em>no forecast exists</em>. Stalled, or
+    the metric stopped arriving. Deliberately not green.</li>
+</ul>
+
+<h4>When the deadline cannot be read</h4>
+<p>If <code>shot_review_deadline_seconds</code> is unreadable the sweep falls back to an
+invented time and sets <code>deadline_is_placeholder</code>. The page then leads with a
+red banner. An earlier version of the pipeline swallowed that failure and reported that a
+shot comfortably made a deadline which had already passed.</p>
+
+<div class="dnote">Failure states are shown, not smoothed. A failed sweep renders an error
+with its reason and drops the rows; it never leaves the previous figures on screen where
+they would read as current.</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* /shots — one fetch, one render, no framework.
+   Wrapped in an IIFE so nothing here can collide with the shell's globals ($, esc, fresh). */
+(() => {
+  "use strict";
+
+  const POLL_MS = 20000;
+  /* Order used by fleet.py's own sort. Re-applied client-side so the page is correct even
+     if the API ever hands rows back unsorted — a supervisor reads top-down. */
+  const ORDER = {critical:0, at_risk:1, unknown:2, on_track:3, done:4};
+  const LABEL = {critical:"will miss review", at_risk:"at risk", on_track:"on track",
+                 done:"pass complete", unknown:"no data"};
+  const MIN_WINDOW_MS = 30 * 60 * 1000;   // keeps a bar from degenerating when everything
+                                          // is within a few minutes of now
+
+  const zone   = $("shotsZone");
+  const rowsEl = $("shotRows");
+
+  const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+  const fmtTime = (ms) => new Date(ms).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+
+  /* Durations as a crew says them: "1h 12m", "40m". Hours alone read as precision the
+     forecast does not have. */
+  function fmtDur(hours) {
+    const mins = Math.round(Math.abs(hours) * 60);
+    if (mins < 60) return mins + "m";
+    return Math.floor(mins / 60) + "h " + String(mins % 60).padStart(2, "0") + "m";
+  }
+
+  function verdictLine(s) {
+    if (s.status === "done") return "Pass complete — nothing left to render";
+    if (s.status === "unknown")
+      return "No forecast: no frame completed in the last 15 minutes";
+    if (s.slip_hours === null || s.slip_hours === undefined) return "No forecast available";
+    if (s.slip_hours > 0) return "Lands " + fmtDur(s.slip_hours) + " after review";
+    return "Lands " + fmtDur(s.slip_hours) + " before review";
+  }
+
+  function row(s, t0, t1) {
+    const dlMs  = Date.parse(s.deadline);
+    const etaMs = s.eta ? Date.parse(s.eta) : null;
+    const span  = t1 - t0;
+    const pct   = (ms) => clamp(((ms - t0) / span) * 100, 0, 100);
+    const dlPct = Number.isFinite(dlMs) ? pct(dlMs) : 100;
+
+    let bar;
+    if (s.status === "done") {
+      bar = `<div class="track complete"><span class="fill"></span>
+               <span class="dl" style="left:${dlPct}%"></span></div>`;
+    } else if (etaMs === null || !Number.isFinite(etaMs)) {
+      /* No ETA is not a zero-length bar — a bar that renders as "finished instantly" would
+         be a lie. Hatched full width instead, meaning "unresolved". */
+      bar = `<div class="track nodata"><span class="dl" style="left:${dlPct}%"></span></div>`;
+    } else {
+      const etaPct = pct(etaMs);
+      const onTime = Math.min(etaPct, dlPct);
+      const over   = Math.max(0, etaPct - dlPct);
+      bar = `<div class="track">
+               <span class="fill" style="width:${onTime}%"></span>
+               ${over > 0 ? `<span class="over" style="left:${dlPct}%;width:${over}%"></span>` : ""}
+               <span class="dl" style="left:${dlPct}%"></span>
+             </div>`;
+    }
+
+    const slip = (s.slip_hours === null || s.slip_hours === undefined)
+      ? `<span class="v none">—</span>`
+      : s.slip_hours > 0
+        ? `<span class="v late">+${fmtDur(s.slip_hours)} late</span>`
+        : `<span class="v spare">${fmtDur(s.slip_hours)} spare</span>`;
+
+    return `
+      <article class="shot" data-status="${esc(s.status)}">
+        <div class="shead">
+          <span class="sid">${esc(s.shot)}</span>
+          <span class="dept">${esc(s.department)}</span>
+          <span class="spill">${esc(LABEL[s.status] || s.status)}</span>
+          <span class="sverdict">${esc(verdictLine(s))}</span>
+        </div>
+        ${bar}
+        <div class="nums">
+          <div><span class="k">frames left</span>
+            <span class="v${s.frames_remaining ? "" : " none"}">${s.frames_remaining.toLocaleString()}</span></div>
+          <div><span class="k">rate / min</span>
+            <span class="v${s.rate_per_min > 0 ? "" : " none"}">${s.rate_per_min > 0 ? s.rate_per_min.toFixed(2) : "0.00"}</span></div>
+          <div><span class="k">forecast eta</span>
+            <span class="v${etaMs ? "" : " none"}">${etaMs ? fmtTime(etaMs) : "none"}</span></div>
+          <div><span class="k">review deadline</span>
+            <span class="v">${Number.isFinite(dlMs) ? fmtTime(dlMs) : "—"}</span></div>
+          <div><span class="k">slip</span>${slip}</div>
+        </div>
+        ${s.note ? `<p class="snote">${esc(s.note)}</p>` : ""}
+        <p class="prov">shot_frames_remaining{shot="${esc(s.shot)}"} · sum by (shot) (rate(render_frames_completed_total[15m])) * 60</p>
+      </article>`;
+  }
+
+  function renderDeadline(d) {
+    const ms = Date.parse(d.deadline);
+    $("dlTime").textContent = Number.isFinite(ms)
+      ? new Date(ms).toLocaleString([], {weekday:"short", hour:"2-digit", minute:"2-digit"})
+      : "unreadable";
+    if (Number.isFinite(ms)) {
+      const h = (ms - Date.now()) / 3600000;
+      $("dlRel").textContent = h >= 0 ? fmtDur(h) + " from now" : fmtDur(h) + " ago";
+    } else {
+      $("dlRel").textContent = "";
+    }
+    const bad = !!d.deadline_is_placeholder;
+    $("placeholderBox").hidden = !bad;
+    if (bad) {
+      $("placeholderReason").textContent =
+        d.deadline_placeholder_reason || "reason not reported by the sweep";
+    }
+    return bad;
+  }
+
+  function counts(shots) {
+    const n = (f) => shots.filter(f).length;
+    $("cExc").textContent  = n((s) => s.status === "critical" || s.status === "at_risk");
+    $("cOk").textContent   = n((s) => s.status === "on_track");
+    $("cUnk").textContent  = n((s) => s.status === "unknown");
+    $("cDone").textContent = n((s) => s.status === "done");
+  }
+
+  function render(data) {
+    const placeholder = renderDeadline(data);
+    const shots = Array.isArray(data.shots) ? data.shots.slice() : [];
+
+    /* A reported error wins over rows, even if some rows came back: a partial sweep
+       presented as a complete one is exactly the thing this console argues against. */
+    if (data.error) {
+      $("shotsErrMsg").textContent = data.error;
+      zone.dataset.state = "error";
+      counts([]);
+      fresh("bad", "sweep failed");
+      return;
+    }
+    if (!shots.length) {
+      zone.dataset.state = "empty";
+      counts([]);
+      fresh("warn", "no shots");
+      return;
+    }
+
+    shots.sort((a, b) =>
+      (ORDER[a.status] ?? 9) - (ORDER[b.status] ?? 9) || (b.slip_hours ?? 0) - (a.slip_hours ?? 0));
+    counts(shots);
+
+    /* One shared time axis across every row, so bar lengths are comparable between shots.
+       It runs from now to the latest of (any deadline, any ETA), with a floor so a farm
+       that is minutes from done still draws a readable bar. */
+    const t0 = Date.now();
+    let t1 = t0 + MIN_WINDOW_MS;
+    for (const s of shots) {
+      for (const iso of [s.deadline, s.eta]) {
+        const ms = iso ? Date.parse(iso) : NaN;
+        if (Number.isFinite(ms) && ms > t1) t1 = ms;
+      }
+    }
+    t1 = t0 + (t1 - t0) * 1.06;          // headroom so a bar at the far right is not clipped
+
+    const dlMs = Date.parse(shots[0].deadline);
+    const dlPct = Number.isFinite(dlMs) ? clamp(((dlMs - t0) / (t1 - t0)) * 100, 0, 100) : 100;
+    $("axisDl").style.left = dlPct + "%";
+    $("axisDl").textContent = "review " + (Number.isFinite(dlMs) ? fmtTime(dlMs) : "");
+    $("axisEnd").textContent = fmtTime(t1);
+
+    rowsEl.innerHTML = shots.map((s) => row(s, t0, t1)).join("");
+    zone.dataset.state = "ready";
+
+    const exc = shots.filter((s) => s.status === "critical" || s.status === "at_risk").length;
+    fresh(placeholder ? "bad" : exc ? "warn" : "live",
+          placeholder ? "deadline invented"
+            : exc ? exc + (exc === 1 ? " shot at risk" : " shots at risk")
+            : "all passes on track");
+  }
+
+  async function load() {
+    try {
+      const r = await fetch("/api/fleet", {headers:{accept:"application/json"}});
+      /* 503 still carries a JSON body with `error` — read it rather than throwing away the
+         one thing that says WHY the sweep failed. */
+      const data = await r.json().catch(() => ({error:`HTTP ${r.status} with no JSON body`, shots:[]}));
+      render(data);
+    } catch (err) {
+      $("shotsErrMsg").textContent = (err && err.message) ? err.message : String(err);
+      zone.dataset.state = "error";
+      fresh("bad", "unreachable");
+    }
+  }
+
+  load();
+  /* Poll while the tab is visible. A background tab polling every 20s is a Prometheus
+     query per shot that nobody is reading. */
+  let timer = setInterval(load, POLL_MS);
+  document.addEventListener("visibilitychange", () => {
+    clearInterval(timer);
+    if (!document.hidden) { load(); timer = setInterval(load, POLL_MS); }
+  });
+})();
+</script>
+{% endblock %}
