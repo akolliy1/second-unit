@@ -197,6 +197,69 @@ def forecast_after_remediation(
     }
 
 
+def build_incident_dashboard(
+    shot: str,
+    faulty_node: str,
+    department: str = "lighting",
+    prometheus_uid: str = "grafanacloud-prom",
+) -> dict:
+    """Build a valid Grafana dashboard for an incident. Returns JSON ready for update_dashboard.
+
+    Call this and pass the result straight through as the `dashboard` argument. Do not write
+    dashboard JSON yourself.
+
+    Why this exists: `update_dashboard` declares NO required fields, so there is no schema to
+    follow, and the agent has to invent Grafana's panel/gridPos/targets structure from
+    nothing. It failed on every attempt — four separate runs — while reporting success. The
+    model should decide WHAT to show; the shape of a Grafana dashboard is not a judgement
+    call, it is a spec, and specs belong in code.
+
+    Args:
+        shot: The affected shot, e.g. SH042.
+        faulty_node: The node at fault, e.g. render-07.
+        department: The affected department, used in the queue panel.
+        prometheus_uid: Datasource UID; the stack default is usually right.
+
+    Returns:
+        A dict to pass as `dashboard`. Pair it with overwrite=true and a folderUid.
+    """
+    def panel(pid, title, expr, x, y, w=12, h=8, unit=""):
+        return {
+            "id": pid, "type": "timeseries", "title": title,
+            "gridPos": {"h": h, "w": w, "x": x, "y": y},
+            "datasource": {"type": "prometheus", "uid": prometheus_uid},
+            "fieldConfig": {"defaults": {"unit": unit, "custom": {"lineWidth": 2,
+                            "fillOpacity": 8}}, "overrides": []},
+            "targets": [{"refId": "A", "expr": expr,
+                         "datasource": {"type": "prometheus", "uid": prometheus_uid}}],
+        }
+
+    return {
+        # No uid: Grafana assigns one on create. Passing a uid we invented risks colliding
+        # with an existing dashboard and silently overwriting someone else's work.
+        "title": f"Incident · {shot} · {faulty_node}",
+        "tags": ["second-unit", "incident", shot.lower()],
+        "timezone": "browser",
+        "schemaVersion": 39,
+        "refresh": "30s",
+        "time": {"from": "now-3h", "to": "now"},
+        "panels": [
+            panel(1, f"{faulty_node} — GPU ECC errors (the cause)",
+                  f'increase(render_node_gpu_ecc_errors_total{{node="{faulty_node}"}}[5m])',
+                  0, 0),
+            panel(2, f"{faulty_node} — GPU temperature vs peers",
+                  "render_node_gpu_temp_celsius", 12, 0, unit="celsius"),
+            panel(3, f"{department} queue depth",
+                  f'render_queue_depth{{queue="{department}"}}', 0, 8),
+            panel(4, f"{shot} — frames remaining vs completion rate",
+                  f'shot_frames_remaining{{shot="{shot}"}}', 12, 8),
+            panel(5, "Frame failures by node and reason",
+                  "sum by (node, reason) (increase(render_frames_failed_total[10m]))",
+                  0, 16, w=24),
+        ],
+    }
+
+
 def idle_cost(artists_idle: int, slip_hours: float, hourly_rate_usd: float = 85.0) -> dict:
     """Convert a schedule slip into the number a producer actually argues about.
 

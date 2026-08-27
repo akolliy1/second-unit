@@ -171,6 +171,73 @@ class Farm:
 
     # -- one tick ------------------------------------------------------
 
+    def catalog_series(self, ts_ms):
+        """Telemetry for the wider slate — the passes rendering today beyond the incident.
+
+        Without this the catalogue was a table you could read and nothing else: no series
+        meant no forecast, no investigation, and a "Shots" page whose rows led nowhere. A
+        slate you cannot ask questions about is a brochure.
+
+        These shots are deliberately UNEVENTFUL. They burn down at their department's normal
+        rate, so the farm looks like a working studio rather than a farm where everything is
+        on fire, and the one real incident still stands out. An investigation of one of them
+        should honestly conclude "on track" — that is a useful answer, not a failure.
+        """
+        import sys
+        from pathlib import Path
+        # Two layouts: the repo (../agent/second_unit) and the container, where the package
+        # is copied next to this file. Try the import first so the container path, which is
+        # already importable, needs no games.
+        here = Path(__file__).resolve().parent
+        for cand in (here, here.parent / "agent"):
+            if cand.is_dir() and str(cand) not in sys.path:
+                sys.path.insert(0, str(cand))
+        try:
+            from second_unit.shots_catalog import active
+        except Exception:  # noqa: BLE001 — the incident must not depend on the catalogue
+            return []
+
+        out = []
+        now_s = ts_ms / 1000
+        for sh in active():
+            # Progress is a fraction of the pass's OWN duration, not a fixed frames/min.
+            #
+            # The first version burned frames at a department rate (anim 11/min), so a shot
+            # the catalogue considered two days into a three-day pass reported itself
+            # finished after 86 minutes. The console then showed "DONE · pass complete" for a
+            # shot the slate listed as rendering — two parts of the same product disagreeing
+            # about the same shot, which is worse than either being wrong alone.
+            #
+            # Deriving progress from days_to_render makes the telemetry and the catalogue the
+            # same statement expressed twice.
+            span_s = max(1.0, sh.days_to_render * 24 * 3600)
+            frac = (now_s - self._catalog_epoch(sh)) / span_s
+            frac = max(0.0, min(1.0, frac))
+            done = int(sh.total_frames * frac)
+            labels = {"shot": sh.shot, "department": sh.department,
+                      "farm": "vancouver", "job": "production-tracker"}
+            out.append(({"__name__": "shot_frames_remaining", **labels},
+                        [(sh.total_frames - done, ts_ms)]))
+            out.append(({"__name__": "render_frames_completed_total",
+                         "node": "pool", "shot": sh.shot,
+                         "department": sh.department, "farm": "vancouver",
+                         "job": "render-scheduler"}, [(done, ts_ms)]))
+        return out
+
+    @staticmethod
+    def _catalog_epoch(sh) -> float:
+        """When this pass started rendering, as a unix timestamp.
+
+        Midnight, not 08:00. With an 08:00 start, every shot ingested *today* had an epoch
+        in the future for the first eight hours of the day: progress clamped to zero, the
+        counter never moved, and the console reported them as "no completions in window" —
+        its phrase for a stalled pass. Fifteen healthy shots looked stalled every morning,
+        which is precisely the false alarm that teaches an operator to ignore a screen.
+        """
+        from datetime import datetime, time as _time
+        d = datetime.fromisoformat(sh.ingested_on)
+        return datetime.combine(d.date(), _time(hour=0)).timestamp()
+
     def tick(self, minute, ts_ms):
         """Advance one minute. Returns (prom_series, loki_streams)."""
         series = []
@@ -266,6 +333,10 @@ class Farm:
             series.append(({"__name__": "asset_cache_hit_ratio", "tier": tier,
                             "farm": "vancouver", "job": "asset-pipeline"},
                            [(round(self.cache_hit_ratio(tier, minute), 4), ts_ms)]))
+
+        # The rest of the slate, so every active shot has telemetry and can be forecast,
+        # investigated and asked about — not just the three in the incident.
+        series.extend(self.catalog_series(ts_ms))
 
         logs.extend(self._logs(minute))
         return series, logs

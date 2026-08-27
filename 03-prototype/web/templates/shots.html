@@ -1,24 +1,48 @@
 {% extends "_base.html" %}
 {#
-  /shots — Delivery.
+  /shots — Delivery, and the slate it is drawn from.
 
-  The supervisor's question: "does each pass make its review?" One row per shot, and the
-  answer readable before any number is read — status colour on the row, and a bar of the
-  forecast ETA against the published deadline with the late part drawn past the deadline
-  line in red. Numbers are there to justify the colour, not to be scanned.
+  This page answers two different questions and must never let them blur into one:
 
-  Everything on this page comes from GET /api/fleet, which is Prometheus queries plus
-  arithmetic in fleet.py — no model is involved, so the page cannot show a shot that does
-  not exist or two different ETAs for the same shot.
+    1. "What is actually rendering right now, and does it make its review?"
+       GET /api/fleet — Prometheus queries plus arithmetic in fleet.py. A few passes,
+       real telemetry, a forecast per shot against a published deadline.
 
-  The states that matter here are the honest ones, and they are all designed rather than
-  emergent: the sweep failed (`error`), the sweep returned nothing (`shots == []`), the
-  deadline could not be read from telemetry (`deadline_is_placeholder`), the pass is
-  finished (`done`, which is good news), and no completions were seen in the window
-  (`unknown`, which is NOT good news and must never look like "on track").
+    2. "What has the production tracker published?"
+       GET /api/shots — the generated catalogue (shots_catalog.py), hundreds of rows
+       growing by 50 a day. No telemetry, no forecast, no model. Just the slate.
+
+  A shot can sit in the slate and never appear on the farm, and the page says so in words
+  rather than leaving a supervisor to infer it from two lists of different lengths. The two
+  sections are visually separated, each labelled with its own source, and neither borrows
+  the other's numbers.
+
+  The states that matter are the honest ones and they are all designed rather than emergent:
+  the sweep failed (`error`), the sweep returned nothing (`shots == []`), the deadline could
+  not be read (`deadline_is_placeholder`), the slate request failed, the slate came back
+  empty because of the filters the reader themselves set, and the slate is simply slow.
+
+  Nothing on this page reflows under a reader's cursor. New ingestion is announced in a
+  fixed-position banner that changes no layout; the table only changes when the reader asks.
 #}
 
 {% block head_extra %}
+/* Slate rows link into Investigation, but ONLY while a pass is rendering.
+   These links did not exist at first, and correctly so: catalogue shots had no telemetry,
+   so the link was a dead end. They do now — the seeder emits series for every active pass —
+   which makes the link real. A queued or completed pass still has nothing live to
+   investigate, so it gets no link rather than a page that shrugs. */
+td.c-shot .investigate{
+  font-family:var(--sans); font-size:.68rem; font-weight:600; text-decoration:none;
+  color:var(--ink3); border:1px solid var(--line); border-radius:999px;
+  padding:.05rem .4rem; margin-left:.4rem; white-space:nowrap; opacity:0;
+  transition:opacity .12s;
+}
+tr:hover td.c-shot .investigate,
+td.c-shot .investigate:focus-visible{opacity:1}
+td.c-shot .investigate:hover{border-color:var(--amber); color:var(--ink)}
+/* Touch devices have no hover, so never hide it there. */
+@media (hover:none){ td.c-shot .investigate{opacity:1} }
 /* The way into a detail view. Positioned in the row's flow, not absolutely, so it cannot
    overlap content at narrow widths. */
 .shot{position:relative}
@@ -40,6 +64,22 @@
 .zone[data-state="ready"]   > .st-ready,
 .zone[data-state="empty"]   > .st-empty,
 .zone[data-state="error"]   > .st-error{display:block}
+
+/* ------------------------------------------------------ source-of-truth strip
+   The whole point of the page: two sources, stated once, in the UI, before either set of
+   numbers is read. Not a footnote and not only in the drawer. */
+.sources{display:grid; gap:.75rem; grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (max-width:760px){ .sources{grid-template-columns:minmax(0,1fr)} }
+.src{background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
+  padding:.8rem .9rem; border-left:3px solid var(--sc,var(--line2)); min-width:0}
+.src[data-s="slate"]{--sc:var(--violet)}
+.src[data-s="farm"]{--sc:var(--ok)}
+.src h3{margin:0 0 .2rem; font-size:.88rem; color:var(--ink); letter-spacing:-.01em}
+.src p{margin:.25rem 0 0; font-size:.8rem; color:var(--ink2)}
+.src .who{font-family:var(--mono); font-size:.62rem; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--sc)}
+.srcnote{font-size:.8rem; color:var(--ink3); margin:.6rem 0 0}
+.srcnote b{color:var(--ink2); font-weight:600}
 
 /* ---------------------------------------------------------- deadline banner */
 .dlcard{display:flex; gap:.9rem; align-items:flex-start; flex-wrap:wrap}
@@ -63,7 +103,7 @@
 
 /* ------------------------------------------------------------- count tiles */
 .tile{background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
-  padding:.7rem .8rem; border-left:3px solid var(--tc,var(--line2))}
+  padding:.7rem .8rem; border-left:3px solid var(--tc,var(--line2)); min-width:0}
 .tile b{display:block; font-family:var(--mono); font-size:1.5rem; line-height:1.1;
   color:var(--ink)}
 .tile span{display:block; font-size:.74rem; color:var(--ink3); margin-top:.15rem}
@@ -71,6 +111,10 @@
 .tile[data-k="unknown"]{--tc:var(--violet)}
 .tile[data-k="on_track"]{--tc:var(--ok)}
 .tile[data-k="done"]{--tc:var(--cyan)}
+.tile[data-k="slate"]{--tc:var(--violet)}
+.tile[data-k="new"]{--tc:var(--amber)}
+.tile[data-k="rendering"]{--tc:var(--amber)}
+.tile[data-k="complete"]{--tc:var(--cyan)}
 
 /* ------------------------------------------------------------------- axis */
 .axis{position:relative; height:1.1rem; font-family:var(--mono);
@@ -134,7 +178,11 @@
    <html> by the time this paints, so this needs no JS at all. */
 .prov{font-family:var(--mono); font-size:.68rem; color:var(--ink3); margin:.4rem 0 0;
   overflow-x:auto; white-space:nowrap; padding-bottom:.2rem}
-html[data-persona="producer"] .prov{display:none}
+.promql{font-family:var(--mono)}
+.plainalt{display:none}
+html[data-persona="producer"] .prov,
+html[data-persona="producer"] .promql{display:none}
+html[data-persona="producer"] .plainalt{display:inline}
 
 /* ------------------------------------------------------------ error/empty */
 .errbox{border:1px solid var(--crit); border-left-width:3px; background:rgba(255,95,86,.07);
@@ -148,10 +196,165 @@ html[data-persona="producer"] .prov{display:none}
 .skel{height:64px; border-radius:var(--r); background:linear-gradient(90deg,
   var(--panel),var(--panel2),var(--panel)); background-size:200% 100%;
   animation:sh 1.4s linear infinite; margin-bottom:.6rem}
+.skel.row{height:34px; margin-bottom:.4rem}
 @keyframes sh{to{background-position:-200% 0}}
+@media (prefers-reduced-motion:reduce){ .skel{animation:none} }
+
+/* ======================================================== STUDIO SLATE
+   A table, because 750 rows of homogeneous facts is what a table is for. The card rows
+   above are for the handful of passes that carry a forecast; the slate carries none. */
+.slatebar{display:flex; flex-wrap:wrap; gap:.5rem; align-items:flex-end; min-width:0}
+/* max-width, not just a basis: on the line where the controls wrap, a lone remaining
+   group would otherwise flex to the full width of the card and read as a heading. */
+.fgroup{display:flex; flex-direction:column; gap:.2rem; min-width:0; flex:1 1 9.5rem;
+  max-width:14rem}
+.fgroup > label{font-family:var(--mono); font-size:.58rem; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--ink3)}
+.fgroup select,.fgroup input{
+  font:inherit; font-size:.82rem; color:var(--ink); background:var(--panel2);
+  border:1px solid var(--line2); border-radius:8px; padding:.4rem .5rem; min-width:0;
+  width:100%; max-width:100%;
+}
+.fgroup select:focus-visible,.fgroup input:focus-visible{outline:2px solid var(--cyan);
+  outline-offset:1px}
+.fgroup input::placeholder{color:var(--ink3)}
+.fgroup.wide{flex:1 1 13rem; max-width:20rem}
+@media (max-width:560px){ .fgroup,.fgroup.wide{max-width:none} }
+
+/* Active filters are shown as removable chips, so "why is this table showing 4 rows?" is
+   answered on screen instead of in the URL bar. */
+.activef{display:flex; flex-wrap:wrap; gap:.4rem; align-items:center; margin:.75rem 0 0}
+.fchip{display:inline-flex; align-items:center; gap:.4rem; padding:.22rem .3rem .22rem .55rem;
+  border:1px solid var(--line2); border-radius:999px; background:var(--panel2);
+  color:var(--ink2); font-size:.76rem; max-width:100%; min-width:0}
+.fchip b{color:var(--ink); font-weight:600; overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap}
+.fchip button{background:none; border:none; color:var(--ink3); cursor:pointer; font:inherit;
+  line-height:1; padding:.1rem .25rem; border-radius:999px}
+.fchip button:hover{color:var(--crit)}
+.fchip button:focus-visible{outline:2px solid var(--cyan); outline-offset:1px}
+.linkbtn{background:none; border:none; color:var(--cyan); cursor:pointer; font:inherit;
+  font-size:.78rem; text-decoration:underline; padding:.2rem}
+.linkbtn:focus-visible{outline:2px solid var(--cyan); outline-offset:2px}
+
+/* The table scrolls inside its own box. The page body must never scroll sideways —
+   that rule is set in _tokens.css and this is the local half of the bargain. */
+.tablewrap{overflow-x:auto; border:1px solid var(--line); border-radius:var(--r);
+  background:var(--panel)}
+table.slate{border-collapse:collapse; width:100%; min-width:36rem; font-size:.83rem}
+html[data-persona="producer"] table.slate{min-width:26rem}
+table.slate th,table.slate td{
+  text-align:left; padding:.5rem .7rem; border-bottom:1px solid var(--line);
+  white-space:nowrap;
+}
+table.slate thead th{
+  position:sticky; top:0; z-index:2; background:var(--panel2); color:var(--ink3);
+  font-family:var(--mono); font-size:.6rem; letter-spacing:.12em; text-transform:uppercase;
+  font-weight:650; border-bottom:1px solid var(--line2);
+}
+table.slate tbody tr:last-child td{border-bottom:none}
+table.slate tbody tr:hover{background:var(--panel2)}
+td.c-shot{font-family:var(--mono); font-weight:700; color:var(--ink)}
+td.c-seq,td.c-frames,td.c-ing,td.c-due{font-family:var(--mono); color:var(--ink2)}
+th.c-frames,td.c-frames{text-align:right}
+td.c-dept{color:var(--ink2); text-transform:uppercase; letter-spacing:.06em; font-size:.74rem}
+td.c-due .rel{color:var(--ink3); font-size:.72rem; margin-left:.35rem}
+td.c-due.soon .rel{color:var(--amber)}
+.pchip,.schip{font-family:var(--mono); font-size:.6rem; letter-spacing:.08em;
+  text-transform:uppercase; border-radius:999px; padding:.12rem .45rem;
+  border:1px solid var(--pc,var(--line2)); color:var(--pc,var(--ink3))}
+.pchip[data-v="hero"]{--pc:var(--amber)}
+.pchip[data-v="high"]{--pc:var(--cyan)}
+.pchip[data-v="standard"]{--pc:var(--ink3)}
+.schip[data-v="rendering"]{--pc:var(--amber)}
+.schip[data-v="complete"]{--pc:var(--cyan)}
+.schip[data-v="queued"]{--pc:var(--ink3)}
+
+/* Persona is on <html> before this stylesheet's first paint, so hiding scheduling detail
+   from a producer costs no JS, no re-fetch and no re-render — the rows already in the DOM
+   simply stop having those cells. A producer is asking "does it deliver?"; sequence,
+   priority and frame counts are how a TD answers that, not what a producer needs to read. */
+html[data-persona="producer"] th.c-seq,
+html[data-persona="producer"] td.c-seq,
+html[data-persona="producer"] th.c-prio,
+html[data-persona="producer"] td.c-prio,
+html[data-persona="producer"] th.c-frames,
+html[data-persona="producer"] td.c-frames{display:none}
+/* Sorting by a column you cannot see is a dead control, so it goes with them. */
+html[data-persona="producer"] #fsort option[value="frames"]{display:none}
+
+/* A re-fetch after the first one does NOT blank the table. Rows dim, the toolbar says
+   "loading", and the reader's place on the page is left where they put it. */
+.tablewrap[aria-busy="true"]{opacity:.5}
+.busypill{display:none; font-family:var(--mono); font-size:.66rem; color:var(--amber);
+  letter-spacing:.1em; text-transform:uppercase}
+.slate-busy .busypill{display:inline}
+
+.pager{display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin:.75rem 0 0;
+  min-width:0}
+.pager .pbtn{font-size:.8rem; padding:.35rem .6rem}
+.pager .pos{font-family:var(--mono); font-size:.78rem; color:var(--ink2); white-space:nowrap}
+.pager .shown{font-size:.76rem; color:var(--ink3); white-space:nowrap}
+.pager .grow{flex:1 1 auto}
+.pager .pp{display:flex; align-items:center; gap:.4rem; font-size:.76rem; color:var(--ink3)}
+.pager .pp select{font:inherit; font-size:.78rem; color:var(--ink); background:var(--panel2);
+  border:1px solid var(--line2); border-radius:8px; padding:.25rem .4rem}
+.pager .pp select:focus-visible{outline:2px solid var(--cyan); outline-offset:1px}
+
+.slownote{display:none; margin:.6rem 0 0; font-size:.8rem; color:var(--ink3)}
+.zone.slow .slownote{display:block}
+
+.personaNote{display:none; font-size:.76rem; color:var(--ink3); margin:.55rem 0 0}
+html[data-persona="producer"] .personaNote{display:block}
+
+/* ============================================================ ingestion toast
+   Fixed, so announcing new work moves NOTHING on the page. The table under the reader's
+   cursor changes only when they press Refresh. */
+.toast{
+  position:fixed; right:1rem; bottom:1rem; z-index:80; max-width:min(22rem,92vw);
+  display:none; gap:.6rem; align-items:flex-start;
+  background:var(--panel2); border:1px solid var(--amber); border-left-width:3px;
+  border-radius:var(--r); padding:.7rem .8rem; box-shadow:0 18px 40px #000a;
+}
+.toast[data-show="1"]{display:flex}
+.toast .tx{min-width:0; flex:1 1 auto}
+.toast .t{font-size:.86rem; font-weight:700; color:var(--ink)}
+.toast .d{font-size:.76rem; color:var(--ink3); margin-top:.2rem}
+.toast .acts{display:flex; gap:.4rem; margin-top:.5rem; flex-wrap:wrap}
+.toast .acts .btn{font-size:.78rem; padding:.35rem .7rem}
+.toast .x{background:none; border:none; color:var(--ink3); cursor:pointer; font-size:1rem;
+  line-height:1; padding:.1rem .2rem}
+.toast .x:hover{color:var(--ink)}
+.toast .x:focus-visible{outline:2px solid var(--cyan); outline-offset:2px}
+@media (max-width:560px){
+  .toast{right:.6rem; left:.6rem; bottom:.6rem; max-width:none}
+}
 {% endblock %}
 
 {% block content %}
+
+<!-- ================================================= 0. WHAT THIS PAGE IS MADE OF
+     Two sources, two sections, stated in words before any number is read. -->
+<section class="sect">
+  <h2>Two sources, not one list</h2>
+  <div class="sources">
+    <div class="src" data-s="farm">
+      <span class="who">live · prometheus</span>
+      <h3>Delivery forecast</h3>
+      <p>The passes actually on the render farm right now. Frame counts and rates are read
+        from telemetry, and each row carries a forecast against its review deadline.</p>
+    </div>
+    <div class="src" data-s="slate">
+      <span class="who">production tracker</span>
+      <h3>Studio slate</h3>
+      <p>Every shot published to the tracker — hundreds of them, growing daily. No telemetry,
+        no forecast: this is what exists, not what is running.</p>
+    </div>
+  </div>
+  <p class="srcnote"><b>A shot can be in the slate and not on the farm.</b> Most of the slate
+    is finished or waiting; only the handful in flight emit metrics worth querying. The two
+    counts below will not match, and they are not supposed to.</p>
+</section>
 
 <!-- ========================================================== 1. THE DEADLINE
      Made visible as a fact of the production, not a number buried in a verdict: every
@@ -176,16 +379,18 @@ html[data-persona="producer"] .prov{display:none}
       <div class="dim mono" id="dlRel" style="font-size:.72rem">—</div>
     </div>
     <p class="why">Read from farm telemetry, not configured here:
-      <code>shot_review_deadline_seconds{shot="SH042"}</code>. The production tracker
-      publishes it; the agent discovers it. That is deliberate — a deadline the harness
-      hands its own agent proves nothing, and a wrong deadline invalidates every forecast
-      under it, so it is read from the same stack as the frame counts.</p>
+      <code class="promql">shot_review_deadline_seconds{shot="SH042"}</code><span
+      class="plainalt">the production tracker publishes it and the farm reports it back</span>.
+      The production tracker publishes it; the agent discovers it. That is deliberate — a
+      deadline the harness hands its own agent proves nothing, and a wrong deadline
+      invalidates every forecast under it, so it is read from the same stack as the frame
+      counts.</p>
   </div>
 </section>
 
 <!-- ========================================================== 2. COUNTS -->
 <section class="sect">
-  <h2>Passes in flight</h2>
+  <h2>Passes in flight · live farm telemetry</h2>
   <div class="grid g4" id="tiles">
     <div class="tile" data-k="exceptions"><b id="cExc">–</b><span>need attention</span></div>
     <div class="tile" data-k="on_track"><b id="cOk">–</b><span>on track</span></div>
@@ -197,6 +402,11 @@ html[data-persona="producer"] .prov{display:none}
 <!-- ========================================================== 3. THE ROWS -->
 <section class="sect">
   <h2>Delivery forecast · exceptions first</h2>
+  <p class="dim" style="font-size:.8rem;margin:-.2rem 0 .6rem">
+    Live render-farm telemetry: one row per pass currently rendering, forecast from its
+    measured frame rate. These are not slate rows — a shot appears here only while the farm
+    is working on it.
+  </p>
   <div class="zone" id="shotsZone" data-state="loading">
 
     <div class="st st-ready">
@@ -236,22 +446,206 @@ html[data-persona="producer"] .prov{display:none}
       </div>
     </div>
   </div>
+  <p class="dim" style="font-size:.74rem;margin:.7rem 0 0">
+    Source: <code class="mono">GET /api/fleet</code> → <code class="mono promql">fleet.fleet_status()</code>,
+    one Prometheus instant query per series through Grafana's datasource proxy plus
+    arithmetic in Python.<span class="plainalt"> Measured on the farm, not estimated by a
+    model.</span> No model is involved in any number in this section. Refreshed every 20&nbsp;s.
+  </p>
 </section>
 
-<p class="dim" style="font-size:.74rem">
-  Source: <code class="mono">GET /api/fleet</code> → <code class="mono">fleet.fleet_status()</code>,
-  which is one Prometheus instant query per series through Grafana's datasource proxy plus
-  arithmetic in Python. No model is involved in any number on this page.
-  Refreshed every 20&nbsp;s.
-</p>
+<!-- ========================================================== 4. STUDIO SLATE -->
+<section class="sect" id="slateSect">
+  <h2>Studio slate · production tracker</h2>
+  <p class="dim" style="font-size:.8rem;margin:-.2rem 0 .6rem">
+    Everything published to the tracker, whether or not it is rendering. Paginated on the
+    server — the table asks for one page at a time, never the whole slate.
+  </p>
+
+  <div class="grid g4" style="margin-bottom:.75rem">
+    <div class="tile" data-k="slate"><b id="sTotal">–</b><span>shots in the slate</span></div>
+    <div class="tile" data-k="new"><b id="sToday">–</b><span>ingested today</span></div>
+    <div class="tile" data-k="rendering"><b id="sRender">–</b><span>rendering (tracker state)</span></div>
+    <div class="tile" data-k="complete"><b id="sDone">–</b><span>complete</span></div>
+  </div>
+
+  <div class="card">
+    <div class="slatebar">
+      <div class="fgroup wide">
+        <label for="fq">Search shot or sequence</label>
+        <input id="fq" type="search" placeholder="SH1042 or SQ030" autocomplete="off"
+               spellcheck="false">
+      </div>
+      <div class="fgroup">
+        <label for="fdept">Department</label>
+        <select id="fdept"><option value="">All departments</option></select>
+      </div>
+      <div class="fgroup">
+        <label for="fstate">State</label>
+        <select id="fstate"><option value="">All states</option></select>
+      </div>
+      <div class="fgroup">
+        <label for="fseq">Sequence</label>
+        <select id="fseq"><option value="">All sequences</option></select>
+      </div>
+      <div class="fgroup">
+        <label for="fprio">Priority</label>
+        <select id="fprio"><option value="">All priorities</option></select>
+      </div>
+      <div class="fgroup">
+        <label for="fsort">Sort</label>
+        <select id="fsort">
+          <option value="newest">Newest ingested</option>
+          <option value="due">Due date</option>
+          <option value="frames">Frame count</option>
+          <option value="shot">Shot id</option>
+        </select>
+      </div>
+    </div>
+    <div class="activef" id="activeFilters" hidden></div>
+    <p class="dim" style="font-size:.72rem;margin:.6rem 0 0" id="facetNote">
+      Counts beside each option are slate-wide totals from
+      <code class="mono">GET /api/shots/facets</code>, not counts within the current filter.
+    </p>
+  </div>
+
+  <div class="zone" id="slateZone" data-state="loading" style="margin-top:.75rem">
+
+    <div class="st st-ready">
+      <div class="tablewrap" id="slateWrap">
+        <table class="slate">
+          <thead>
+            <tr>
+              <th scope="col" class="c-shot">Shot</th>
+              <th scope="col" class="c-seq">Sequence</th>
+              <th scope="col" class="c-dept">Department</th>
+              <th scope="col" class="c-prio">Priority</th>
+              <th scope="col" class="c-frames">Frames</th>
+              <th scope="col" class="c-ing">Ingested</th>
+              <th scope="col" class="c-due">Due</th>
+              <th scope="col" class="c-state">State</th>
+            </tr>
+          </thead>
+          <tbody id="slateRows"></tbody>
+        </table>
+      </div>
+      <div class="pager">
+        <button class="btn pbtn" id="pFirst" type="button">« First</button>
+        <button class="btn pbtn" id="pPrev" type="button">‹ Prev</button>
+        <span class="pos" id="pPos">page – of –</span>
+        <button class="btn pbtn" id="pNext" type="button">Next ›</button>
+        <button class="btn pbtn" id="pLast" type="button">Last »</button>
+        <span class="grow"></span>
+        <span class="shown" id="pShown">—</span>
+        <span class="busypill" id="pBusy">loading…</span>
+        <span class="pp"><label for="fpp">rows</label>
+          <select id="fpp">
+            <option value="25">25</option><option value="50">50</option>
+            <option value="100">100</option>
+          </select></span>
+      </div>
+      <p class="personaNote">Producer view: sequence, priority and frame counts are hidden
+        because they are scheduling detail, not delivery. Switch to TD to see them.</p>
+    </div>
+
+    <div class="st st-loading">
+      <div class="skel row"></div><div class="skel row"></div><div class="skel row"></div>
+      <div class="skel row"></div><div class="skel row"></div><div class="skel row"></div>
+      <p class="slownote" id="slateSlow">Still fetching the slate. It is a few hundred rows on
+        the server and only one page comes down the wire, so this is usually instant — if it
+        stays here, the web process is busy or the catalogue call is slow.</p>
+    </div>
+
+    <div class="st st-empty">
+      <div class="emptybox">
+        <strong style="color:var(--ink2)" id="emptyTitle">No shots match these filters.</strong>
+        <p style="margin:.4rem 0 0">The slate itself is not empty — <b id="emptyTotal">—</b>
+          shots exist. These filters are what removed them:</p>
+        <ul id="emptyList" style="margin:.4rem 0 .2rem 1.1rem; padding:0"></ul>
+        <div style="margin-top:.6rem; display:flex; gap:.5rem; flex-wrap:wrap">
+          <button class="btn primary" id="emptyClear" type="button">Clear all filters</button>
+          <button class="btn" id="emptyRetry" type="button">Reload</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="st st-error">
+      <div class="errbox">
+        <div class="t">✗ Slate unavailable</div>
+        <div class="m" id="slateErrMsg">—</div>
+        <div class="h">No rows are shown because the request failed. The previous page of
+          results is discarded rather than left on screen where it would read as current —
+          and the filters you set are still in the URL, so a reload resumes exactly here.</div>
+        <div style="margin-top:.6rem"><button class="btn" id="slateRetry" type="button">Try again</button></div>
+      </div>
+    </div>
+  </div>
+
+  <p class="dim" style="font-size:.74rem;margin:.7rem 0 0">
+    Source: <code class="mono">GET /api/shots</code> → <code class="mono promql">shots_catalog.catalog()</code>,
+    a pure function of today's date. Filtering, sorting and paging all happen on the server.
+    <span class="plainalt">Straight from the production tracker.</span>
+    Nothing in this table is measured, forecast, or model-generated.
+  </p>
+</section>
+
+<!-- ============================================== ingestion toast (fixed; no reflow) -->
+<div class="toast" id="toast" data-show="0" role="status" aria-live="polite">
+  <div class="tx">
+    <div class="t" id="toastTitle">New shots ingested</div>
+    <div class="d">The slate below is unchanged until you refresh it — nothing moves while
+      you are reading.</div>
+    <div class="acts">
+      <button class="btn primary" id="toastRefresh" type="button">Refresh slate</button>
+      <button class="btn" id="toastLater" type="button">Not now</button>
+    </div>
+  </div>
+  <button class="x" id="toastClose" aria-label="Dismiss">×</button>
+</div>
 {% endblock %}
 
 {% block docs %}
-<h3>Shots — Delivery</h3>
-<p>One row per render pass in flight, with the forecast that answers whether it makes its
-review. Ordered worst-first, so the top of the list is the work that needs a decision.</p>
+<h3>Shots — slate and delivery</h3>
+<p>This page shows two different things and keeps them apart on purpose.</p>
 
-<h4>Where each number comes from</h4>
+<h4>Studio slate ≠ delivery forecast</h4>
+<ul>
+  <li><b>Studio slate</b> — <code>GET /api/shots</code>, served from
+    <code>shots_catalog.py</code>. Everything the production tracker has published: hundreds
+    of shots, growing by 50 a day. It is what <em>exists</em>.</li>
+  <li><b>Delivery forecast</b> — <code>GET /api/fleet</code>, Prometheus queries plus
+    arithmetic in <code>fleet.py</code>. The handful of passes the farm is <em>actually
+    rendering</em>, each with a measured rate and an ETA.</li>
+</ul>
+<p>A shot can be in the slate and never appear in the forecast — most of the slate is
+finished or waiting, and idle shots emit no telemetry worth querying. The two counts do not
+match and are not meant to.</p>
+
+<h4>What <code>state</code> means in the slate</h4>
+<ul>
+  <li><b>queued</b> — published, render not started yet.</li>
+  <li><b>rendering</b> — the tracker believes the pass is in progress today. This is the
+    tracker's view, derived from ingest date plus expected render days — it is <em>not</em> a
+    reading from the farm.</li>
+  <li><b>complete</b> — the expected render window has passed.</li>
+</ul>
+<div class="dnote">Slate <code>state</code> and forecast <code>status</code> are different
+vocabularies on purpose. "rendering" is a tracker expectation; "critical / at risk / on
+track / no completions in window" are measured from telemetry.</div>
+
+<h4>Where each slate number comes from</h4>
+<ul>
+  <li><code>frames</code> — <code>total_frames</code>, the published frame count for the
+    pass. Not frames remaining.</li>
+  <li><code>ingested</code> — the day the shot was published to the tracker.</li>
+  <li><code>due</code> — <code>due_on</code>, the client review this pass is booked
+    against.</li>
+  <li>Filter counts — <code>GET /api/shots/facets</code>, slate-wide totals per value. They
+    do not narrow as you filter, so the number beside "fx" is how many fx shots exist, not
+    how many survive your other filters.</li>
+</ul>
+
+<h4>Where each forecast number comes from</h4>
 <ul>
   <li><code>frames left</code> — <code>shot_frames_remaining</code>, the raw gauge for that
     shot's pass.</li>
@@ -265,13 +659,7 @@ review. Ordered worst-first, so the top of the list is the work that needs a dec
   <li><code>slip</code> — <code>ETA − deadline</code>, in hours. Positive is late.</li>
 </ul>
 
-<h4>What makes it trustworthy</h4>
-<p>No model runs to build this page. The sweep is Prometheus queries and arithmetic
-(<code>fleet.py</code>), executed for every shot on every refresh, so the strip cannot
-invent a shot, invent an ETA, or disagree with itself between refreshes. The same code path
-feeds the Overview triage strip, so the two cannot drift.</p>
-
-<h4>Reading the status</h4>
+<h4>Reading the forecast status</h4>
 <ul>
   <li><b>critical</b> — forecast more than an hour past review.</li>
   <li><b>at risk</b> — forecast past review at all.</li>
@@ -283,6 +671,17 @@ feeds the Overview triage strip, so the two cannot drift.</p>
     the metric stopped arriving. Deliberately not green.</li>
 </ul>
 
+<h4>Filters, paging and the URL</h4>
+<p>Every filter, the sort, the page and the rows-per-page are written into the query string,
+so a filtered view is a link you can paste to someone else and it survives a reload. Paging
+is server-side: the browser never downloads the whole slate.</p>
+
+<h4>New ingestion never moves the page</h4>
+<p>The page polls <code>GET /api/shots?per_page=1</code> once a minute and compares
+<code>catalog_version</code>. When it changes, a banner appears in the corner and
+<em>nothing else happens</em> — the table you are reading does not reload, re-sort or grow
+under your cursor. Refreshing is your decision.</p>
+
 <h4>When the deadline cannot be read</h4>
 <p>If <code>shot_review_deadline_seconds</code> is unreadable the sweep falls back to an
 invented time and sets <code>deadline_is_placeholder</code>. The page then leads with a
@@ -291,12 +690,13 @@ shot comfortably made a deadline which had already passed.</p>
 
 <div class="dnote">Failure states are shown, not smoothed. A failed sweep renders an error
 with its reason and drops the rows; it never leaves the previous figures on screen where
-they would read as current.</div>
+they would read as current. The same rule applies to the slate.</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-/* /shots — one fetch, one render, no framework.
+/* =============================================================== /shots · live farm
+   The delivery forecast. One fetch, one render, no framework.
    Wrapped in an IIFE so nothing here can collide with the shell's globals ($, esc, fresh). */
 (() => {
   "use strict";
@@ -498,6 +898,390 @@ they would read as current.</div>
     clearInterval(timer);
     if (!document.hidden) { load(); timer = setInterval(load, POLL_MS); }
   });
+})();
+
+/* =============================================================== /shots · studio slate
+   A paginated, filterable table over the generated catalogue. Server does the work; the
+   client's only jobs are (a) keep the URL and the controls in agreement and (b) never move
+   anything the reader did not ask to move. */
+(() => {
+  "use strict";
+
+  const PER_PAGE_OPTIONS = [25, 50, 100];
+  const SORTS = ["newest", "due", "frames", "shot"];
+  const POLL_MS = 60000;                 // ingestion check; see the toast below
+  const SLOW_MS = 1800;                  // when a first load earns an explanation
+
+  /* Filter keys, in the order they are shown and explained. `q` is a text search the API
+     matches against shot id and sequence. */
+  const FILTERS = [
+    {key:"q",          el:"fq",     label:"search",     facet:null},
+    {key:"department", el:"fdept",  label:"department", facet:"department"},
+    {key:"state",      el:"fstate", label:"state",      facet:"state"},
+    {key:"sequence",   el:"fseq",   label:"sequence",   facet:"sequence"},
+    {key:"priority",   el:"fprio",  label:"priority",   facet:"priority"},
+  ];
+  const DEFAULTS = {page:1, per_page:25, sort:"newest",
+                    q:"", department:"", state:"", sequence:"", priority:""};
+
+  const S = Object.assign({}, DEFAULTS);
+  const zone = $("slateZone");
+  const tbody = $("slateRows");
+  const wrap = $("slateWrap");
+
+  let firstLoad = true;
+  let inflight = null;                   // AbortController for the current request
+  let slowTimer = null;
+  let debounce = null;
+  let knownVersion = null;               // catalog_version we are currently displaying
+  let knownTotal = null;
+  let dismissedVersion = null;           // a version the reader explicitly waved away
+  let facetsReady = false;               // dropdown options populated?
+
+  const num = (n) => Number(n).toLocaleString();
+
+  /* ------------------------------------------------------------------ URL state
+     The query string IS the state. Unrelated params (?persona=) are preserved, because the
+     shell resolves persona from the same URL and a rewrite that dropped it would silently
+     change who the page thinks it is talking to. */
+  function readURL() {
+    const p = new URLSearchParams(location.search);
+    const page = parseInt(p.get("page"), 10);
+    const pp = parseInt(p.get("per_page"), 10);
+    S.page = Number.isFinite(page) && page > 0 ? page : 1;
+    S.per_page = PER_PAGE_OPTIONS.includes(pp) ? pp : 25;
+    S.sort = SORTS.includes(p.get("sort")) ? p.get("sort") : "newest";
+    for (const f of FILTERS) S[f.key] = (p.get(f.key) || "").trim();
+  }
+
+  function writeURL() {
+    const p = new URLSearchParams(location.search);
+    const set = (k, v) => {
+      if (v === "" || v === null || v === undefined || String(v) === String(DEFAULTS[k])) p.delete(k);
+      else p.set(k, v);
+    };
+    set("page", S.page); set("per_page", S.per_page); set("sort", S.sort);
+    for (const f of FILTERS) set(f.key, S[f.key]);
+    const qs = p.toString();
+    history.replaceState(null, "", location.pathname + (qs ? "?" + qs : "") + location.hash);
+  }
+
+  function activeFilters() {
+    return FILTERS.filter((f) => S[f.key] !== "").map((f) => ({...f, value: S[f.key]}));
+  }
+
+  /* --------------------------------------------------------------- controls -> state */
+  function syncControls() {
+    $("fq").value = S.q;
+    $("fdept").value = S.department;
+    $("fstate").value = S.state;
+    $("fseq").value = S.sequence;
+    $("fprio").value = S.priority;
+    $("fsort").value = S.sort;
+    $("fpp").value = String(S.per_page);
+    /* Reconcile only once the options actually exist. Doing this before the facets land
+       would read "" off an empty <select> and quietly delete a filter that came in from the
+       URL — the shareable-link feature destroying its own argument on page load. Once the
+       options are there, a value with no matching option really is gone, and saying so is
+       honest. */
+    if (!facetsReady) return;
+    for (const f of FILTERS) {
+      if (!f.facet) continue;
+      const el = $(f.el);
+      if (el.value !== S[f.key]) S[f.key] = el.value;
+    }
+  }
+
+  function renderActiveFilters() {
+    const act = activeFilters();
+    const box = $("activeFilters");
+    if (!act.length) { box.hidden = true; box.innerHTML = ""; return; }
+    box.hidden = false;
+    box.innerHTML =
+      `<span class="dim" style="font-size:.72rem">Filtering by</span>` +
+      act.map((f) => `<span class="fchip">${esc(f.label)} <b>${esc(f.value)}</b>
+         <button type="button" data-clear="${esc(f.key)}"
+           aria-label="Remove ${esc(f.label)} filter">×</button></span>`).join("") +
+      `<button class="linkbtn" type="button" data-clear="__all">Clear all</button>`;
+  }
+
+  /* ------------------------------------------------------------------- facets */
+  async function loadFacets() {
+    try {
+      const r = await fetch("/api/shots/facets", {headers:{accept:"application/json"}});
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const data = await r.json();
+      for (const f of FILTERS) {
+        if (!f.facet) continue;
+        const counts = data[f.facet] || {};
+        const total = Object.values(counts).reduce((a, b) => a + b, 0);
+        const el = $(f.el);
+        const all = `<option value="">All ${esc(f.label)}s · ${num(total)}</option>`;
+        let opts = Object.keys(counts).map((k) =>
+          `<option value="${esc(k)}">${esc(k)} · ${num(counts[k])}</option>`).join("");
+        /* A value that came in from the URL but has no facet entry today — `state=queued`
+           on a day when nothing is queued — is kept as an option reading "· 0". Dropping it
+           silently is the worse bug: the table empties, and the filter responsible is not
+           on screen to explain why or to remove. */
+        const cur = S[f.key];
+        if (cur && !(cur in counts)) {
+          opts += `<option value="${esc(cur)}">${esc(cur)} · 0</option>`;
+        }
+        el.innerHTML = all + opts;
+      }
+      facetsReady = true;
+      syncControls();
+    } catch (err) {
+      /* A dead facets call must not take the table with it: search, sort and paging are
+         independent of it, so say what is missing and carry on. */
+      $("facetNote").innerHTML =
+        `<span style="color:var(--amber)">Filter option counts unavailable (` +
+        esc(err && err.message ? err.message : String(err)) +
+        `). Search, sort and paging still work; the dropdowns are empty because the counts ` +
+        `come from <code class="mono">GET /api/shots/facets</code>.</span>`;
+    }
+  }
+
+  /* --------------------------------------------------------------------- rows */
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  function relDays(iso) {
+    const d = Date.parse(iso + "T00:00:00");
+    if (!Number.isFinite(d)) return "";
+    const days = Math.round((d - today.getTime()) / 86400000);
+    if (days === 0) return "today";
+    if (days === 1) return "tomorrow";
+    if (days === -1) return "yesterday";
+    return days > 0 ? "in " + days + "d" : Math.abs(days) + "d ago";
+  }
+
+  function rowHtml(s) {
+    const rel = relDays(s.due_on);
+    const soon = /^(today|tomorrow|in [12]d)$/.test(rel) && s.state !== "complete";
+    return `<tr>
+      <td class="c-shot">${esc(s.shot)}${s.state === "rendering"
+        ? ` <a class="investigate" href="/investigation?shot=${encodeURIComponent(s.shot)}"
+             title="Investigate ${esc(s.shot)}">investigate →</a>`
+        : ""}</td>
+      <td class="c-seq">${esc(s.sequence)}</td>
+      <td class="c-dept">${esc(s.department)}</td>
+      <td class="c-prio"><span class="pchip" data-v="${esc(s.priority)}">${esc(s.priority)}</span></td>
+      <td class="c-frames">${num(s.total_frames)}</td>
+      <td class="c-ing">${esc(s.ingested_on)}</td>
+      <td class="c-due${soon ? " soon" : ""}">${esc(s.due_on)}<span class="rel">${esc(rel)}</span></td>
+      <td class="c-state"><span class="schip" data-v="${esc(s.state)}">${esc(s.state)}</span></td>
+    </tr>`;
+  }
+
+  function renderSummary(sum) {
+    if (!sum) return;
+    $("sTotal").textContent  = num(sum.total ?? 0);
+    $("sToday").textContent  = num(sum.ingested_today ?? 0);
+    $("sRender").textContent = num((sum.by_state && sum.by_state.rendering) || 0);
+    $("sDone").textContent   = num((sum.by_state && sum.by_state.complete) || 0);
+  }
+
+  function renderEmpty(total) {
+    const act = activeFilters();
+    $("emptyTotal").textContent = num(knownTotal ?? total ?? 0);
+    if (act.length) {
+      $("emptyTitle").textContent = "No shots match these filters.";
+      $("emptyList").innerHTML = act.map((f) =>
+        `<li><b>${esc(f.label)}</b> = <code class="mono">${esc(f.value)}</code></li>`).join("");
+      $("emptyClear").hidden = false;
+    } else {
+      /* No filters and no rows is a different fact and must not be dressed as one: the page
+         you asked for is past the end of the slate. */
+      $("emptyTitle").textContent = S.page > 1
+        ? "This page is past the end of the slate."
+        : "The slate is empty.";
+      $("emptyList").innerHTML = S.page > 1
+        ? `<li>page <b>${esc(S.page)}</b> requested, and there are not that many rows</li>`
+        : `<li>no filters are set — the catalogue itself returned nothing, which usually
+             means the web process cannot import <code class="mono">shots_catalog</code></li>`;
+      $("emptyClear").hidden = S.page <= 1;
+    }
+    /* The pager is hidden in this state; leave no stale count behind it either. */
+    $("pShown").textContent = "no shots match";
+    zone.dataset.state = "empty";
+  }
+
+  function renderPager(d) {
+    $("pPos").textContent = `page ${num(d.page)} of ${num(d.pages)}`;
+    const from = (d.page - 1) * d.per_page + 1;
+    const to = Math.min(d.total, from + d.shots.length - 1);
+    $("pShown").textContent = d.total
+      ? `showing ${num(from)}–${num(to)} of ${num(d.total)} shots`
+      : "no shots";
+    $("pFirst").disabled = d.page <= 1;
+    $("pPrev").disabled  = d.page <= 1;
+    $("pNext").disabled  = d.page >= d.pages;
+    $("pLast").disabled  = d.page >= d.pages;
+    $("pLast").dataset.page = d.pages;
+  }
+
+  /* --------------------------------------------------------------------- load */
+  function qs() {
+    const p = new URLSearchParams();
+    p.set("page", S.page); p.set("per_page", S.per_page); p.set("sort", S.sort);
+    for (const f of FILTERS) if (S[f.key]) p.set(f.key, S[f.key]);
+    return p.toString();
+  }
+
+  function setBusy(on) {
+    document.getElementById("slateSect").classList.toggle("slate-busy", on);
+    wrap.setAttribute("aria-busy", on ? "true" : "false");
+  }
+
+  async function load() {
+    writeURL();
+    renderActiveFilters();
+
+    if (inflight) inflight.abort();
+    const ctl = new AbortController();
+    inflight = ctl;
+
+    /* First load gets a skeleton; every load after it keeps the current rows on screen and
+       merely dims them. Blanking a table someone is mid-read of, to show a spinner, is the
+       reflow this page exists to avoid. */
+    if (firstLoad) {
+      zone.dataset.state = "loading";
+      clearTimeout(slowTimer);
+      slowTimer = setTimeout(() => zone.classList.add("slow"), SLOW_MS);
+    } else {
+      setBusy(true);
+    }
+
+    try {
+      const r = await fetch("/api/shots?" + qs(),
+                            {headers:{accept:"application/json"}, signal:ctl.signal});
+      const d = await r.json().catch(() => null);
+      if (ctl.signal.aborted) return;
+      if (!r.ok || !d || d.error) {
+        throw new Error((d && d.error) || `HTTP ${r.status} from /api/shots`);
+      }
+      renderSummary(d.summary);
+      knownVersion = d.catalog_version || knownVersion;
+      /* Slate-wide, deliberately: the toast counts newly ingested shots, and comparing a
+         filtered total against an unfiltered poll would report "300 new shots" the moment
+         someone typed in the search box. */
+      if (d.summary && typeof d.summary.total === "number") knownTotal = d.summary.total;
+
+      if (!Array.isArray(d.shots) || !d.shots.length) {
+        renderEmpty(d.total);
+      } else {
+        tbody.innerHTML = d.shots.map(rowHtml).join("");
+        renderPager(d);
+        zone.dataset.state = "ready";
+      }
+    } catch (err) {
+      if (err && err.name === "AbortError") return;
+      $("slateErrMsg").textContent = (err && err.message) ? err.message : String(err);
+      tbody.innerHTML = "";
+      zone.dataset.state = "error";
+    } finally {
+      if (inflight === ctl) inflight = null;
+      clearTimeout(slowTimer);
+      zone.classList.remove("slow");
+      firstLoad = false;
+      setBusy(false);
+    }
+  }
+
+  function go(patch) { Object.assign(S, patch); load(); }
+
+  /* ------------------------------------------------------------------ wiring */
+  for (const f of FILTERS) {
+    const el = $(f.el);
+    if (f.key === "q") {
+      el.addEventListener("input", () => {
+        clearTimeout(debounce);
+        debounce = setTimeout(() => go({q: el.value.trim(), page: 1}), 250);
+      });
+    } else {
+      el.addEventListener("change", () => go({[f.key]: el.value, page: 1}));
+    }
+  }
+  $("fsort").addEventListener("change", () => go({sort: $("fsort").value, page: 1}));
+  $("fpp").addEventListener("change", () => go({per_page: parseInt($("fpp").value, 10) || 25, page: 1}));
+
+  $("pFirst").addEventListener("click", () => go({page: 1}));
+  $("pPrev").addEventListener("click", () => go({page: Math.max(1, S.page - 1)}));
+  $("pNext").addEventListener("click", () => go({page: S.page + 1}));
+  $("pLast").addEventListener("click", () =>
+    go({page: parseInt($("pLast").dataset.page, 10) || S.page}));
+
+  function clearAll() {
+    for (const f of FILTERS) S[f.key] = "";
+    syncControls();
+    go({page: 1});
+  }
+  $("activeFilters").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-clear]");
+    if (!b) return;
+    if (b.dataset.clear === "__all") return clearAll();
+    S[b.dataset.clear] = "";
+    syncControls();
+    go({page: 1});
+  });
+  $("emptyClear").addEventListener("click", () => (activeFilters().length ? clearAll() : go({page: 1})));
+  $("emptyRetry").addEventListener("click", () => load());
+  $("slateRetry").addEventListener("click", () => load());
+
+  /* The browser's back button changes the query string without a navigation, so the table
+     has to follow it or the URL starts lying about what is on screen. */
+  window.addEventListener("popstate", () => { readURL(); syncControls(); load(); });
+
+  /* ------------------------------------------------------- ingestion toast
+     Poll a one-row page — the cheapest request that still carries catalog_version — and
+     announce a change. NOTHING re-renders here. The banner is fixed-position, so even its
+     own appearance moves no content. */
+  const toast = $("toast");
+  function showToast(newTotal, version) {
+    const delta = (knownTotal !== null && newTotal !== null && newTotal > knownTotal)
+      ? newTotal - knownTotal : null;
+    $("toastTitle").textContent = delta
+      ? `${num(delta)} new shot${delta === 1 ? "" : "s"} ingested`
+      : "The slate has changed";
+    toast.dataset.show = "1";
+    toast.dataset.version = version || "";
+  }
+  function hideToast() { toast.dataset.show = "0"; }
+
+  $("toastRefresh").addEventListener("click", () => {
+    hideToast();
+    dismissedVersion = null;
+    loadFacets();
+    load();
+  });
+  const dismiss = () => {
+    dismissedVersion = toast.dataset.version || null;
+    hideToast();
+  };
+  $("toastLater").addEventListener("click", dismiss);
+  $("toastClose").addEventListener("click", dismiss);
+
+  async function checkIngestion() {
+    if (document.hidden) return;
+    try {
+      const r = await fetch("/api/shots?per_page=1", {headers:{accept:"application/json"}});
+      if (!r.ok) return;                       // a blip is not news; the next tick retries
+      const d = await r.json();
+      const v = d && d.catalog_version;
+      if (!v) return;
+      const total = (d.summary && typeof d.summary.total === "number") ? d.summary.total : null;
+      if (knownVersion === null) { knownVersion = v; knownTotal = total; return; }
+      if (v !== knownVersion && v !== dismissedVersion) showToast(total, v);
+    } catch (_) { /* offline for a minute is not something to shout about */ }
+  }
+  setInterval(checkIngestion, POLL_MS);
+
+  /* --------------------------------------------------------------------- boot
+     Column visibility per persona is pure CSS (html[data-persona]), so switching personas
+     costs no re-render and cannot reorder or reload the table under the reader. */
+  readURL();
+  syncControls();
+  loadFacets();
+  load();
 })();
 </script>
 {% endblock %}

@@ -45,6 +45,24 @@ else
   "$G" run jobs create "${JOB}" "${ARGS[@]}"
 fi
 
+# STOP ANY EXISTING WRITER FIRST.
+#
+# `run jobs execute` starts a NEW execution without touching running ones, so each deploy
+# added another seeder. Three were running at once before this was noticed: three
+# independent Farm objects writing the same Prometheus series with their own counters,
+# which is the corruption that produced a "980 frames/min" peak on a farm that maxes near
+# ten. One writer, always.
+echo "==> cancelling any running execution (only one writer may exist)"
+for e in $("$G" run jobs executions list --job "${JOB}" --region "${REGION}" \
+             --format="value(name.basename())" 2>/dev/null); do
+  running=$("$G" run jobs executions describe "$e" --region "${REGION}" \
+              --format="value(status.runningCount)" 2>/dev/null)
+  if [ "$running" = "1" ]; then
+    echo "    cancelling $e"
+    "$G" run jobs executions cancel "$e" --region "${REGION}" --quiet >/dev/null 2>&1 || true
+  fi
+done
+
 echo "==> start an execution now"
 "$G" run jobs execute "${JOB}" --region "${REGION}"
 

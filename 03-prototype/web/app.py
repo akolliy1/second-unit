@@ -35,6 +35,27 @@ from fastapi.responses import (
 )
 from fastapi.templating import Jinja2Templates
 
+# Load .env BEFORE anything reads os.environ.
+#
+# This has now bitten twice. First the web process never loaded it at all, which
+# silently disabled Text-to-Speech (403, missing quota project) and the tracing
+# exporter. Then it loaded too LATE: GRAFANA_URL is captured into a module constant a
+# few lines below, so it was always empty and every evidence deeplink on the
+# investigation page rendered as 'deeplink unavailable' — on the one surface whose job
+# is to let a judge verify our claims against the live stack. Import order is not a
+# style question here.
+try:
+    from dotenv import load_dotenv as _load_dotenv
+    from pathlib import Path as _P
+    for _cand in (_P(__file__).resolve().parent / ".env",
+                  _P(__file__).resolve().parent.parent / ".env"):
+        if _cand.is_file():
+            _load_dotenv(_cand)
+            break
+except Exception:  # noqa: BLE001
+    pass
+
+
 HERE = Path(__file__).parent
 FIXTURE_PATH = HERE / "fixture.json"
 
@@ -94,20 +115,6 @@ class Run:
     briefing_script: str = ""   # the spoken dailies script, composed by the pipeline
     briefing_mp3: Optional[bytes] = None    # synthesized lazily, then cached per run
 
-
-# The web process never loaded .env, so anything reading os.environ at request time got
-# nothing — Text-to-Speech returned a 403 about a missing quota project, and the tracing
-# exporter silently declined to start. Load it here, before either is configured.
-try:
-    from dotenv import load_dotenv as _load_dotenv
-    from pathlib import Path as _P
-    for _cand in (_P(__file__).resolve().parent / ".env",
-                  _P(__file__).resolve().parent.parent / ".env"):
-        if _cand.is_file():
-            _load_dotenv(_cand)
-            break
-except Exception:  # noqa: BLE001
-    pass
 
 # Export ADK's own GenAI spans to Grafana Cloud AI Observability. Done at import so every
 # request path is traced, and guarded so a missing credential cannot stop the service.
@@ -180,17 +187,32 @@ async def _iter_live(run: Run, request: Request) -> AsyncIterator[str]:
         # Wrapping __anext__ in wait_for lets us emit an SSE comment during the gaps
         # without touching the pipeline itself.
         events = iter_live_events(shot=run.shot).__aiter__()
+        pending = None
         while True:
-            try:
-                event = await asyncio.wait_for(events.__anext__(), timeout=10)
-            except asyncio.TimeoutError:
+            # Heartbeat WITHOUT cancelling the pipeline.
+            #
+            # The first version did `await asyncio.wait_for(events.__anext__(), timeout=10)`.
+            # On timeout, wait_for CANCELS the coroutine it was waiting on — which here is
+            # the generator step currently running an agent. So every heartbeat killed the
+            # stage in flight and left the generator dead: the stream ended cleanly after
+            # Watchtower with no error, and the "fix" for truncation became a better cause
+            # of it. Keep the step alive in its own task and simply look at it periodically.
+            if pending is None:
+                pending = asyncio.ensure_future(events.__anext__())
+            done, _ = await asyncio.wait({pending}, timeout=10)
+            if not done:
                 if await request.is_disconnected():
+                    pending.cancel()
                     run.status = "abandoned"
                     return
-                yield ": keepalive\n\n"      # a comment: valid SSE, ignored by clients
+                yield ": keepalive\n\n"      # a comment line: valid SSE, ignored by clients
                 continue
+            try:
+                event = pending.result()
             except StopAsyncIteration:
                 break
+            finally:
+                pending = None
             if await request.is_disconnected():
                 run.status = "abandoned"
                 return
@@ -618,6 +640,92 @@ async def api_fleet() -> JSONResponse:
     })
 
 
+@app.get("/api/shots")
+async def api_shots(request: Request) -> JSONResponse:
+    """The studio slate: paginated, filterable, sortable.
+
+    Served from the generated catalogue rather than Prometheus. The catalogue is hundreds of
+    shots and grows daily; asking Prometheus for all of them would put a multi-second query
+    behind every page of a table. Live telemetry stays where it belongs — /api/fleet — for
+    the few dozen passes actually rendering.
+    """
+    from datetime import date as _date
+
+    from second_unit.shots_catalog import catalog, summary
+
+    q = request.query_params
+    try:
+        page = max(1, int(q.get("page", 1)))
+        # Honour what the caller asked for. The first version clamped the floor to 10, so
+        # per_page=3 silently returned 10 — the same quiet override this project keeps
+        # objecting to elsewhere. 200 remains a real ceiling because the payload is real.
+        per_page = min(200, max(1, int(q.get("per_page", 25))))
+    except ValueError:
+        return JSONResponse({"error": "page and per_page must be integers"},
+                            status_code=400)
+
+    rows = catalog()
+    # Filters. Unknown values are ignored rather than returning nothing — a filter that
+    # silently empties the table looks identical to a broken feed.
+    dept = (q.get("department") or "").lower()
+    state = (q.get("state") or "").lower()
+    seq = (q.get("sequence") or "").upper()
+    prio = (q.get("priority") or "").lower()
+    search = (q.get("q") or "").strip().upper()
+    if dept:
+        rows = [r for r in rows if r.department == dept]
+    if state:
+        rows = [r for r in rows if r.state == state]
+    if seq:
+        rows = [r for r in rows if r.sequence == seq]
+    if prio:
+        rows = [r for r in rows if r.priority == prio]
+    if search:
+        rows = [r for r in rows if search in r.shot or search in r.sequence]
+
+    sort = q.get("sort") or "newest"
+    keys = {
+        "newest": lambda r: (r.ingested_on, r.shot),
+        "due": lambda r: (r.due_on, r.shot),
+        "frames": lambda r: r.total_frames,
+        "shot": lambda r: r.shot,
+    }
+    rows.sort(key=keys.get(sort, keys["newest"]),
+              reverse=sort in ("newest", "frames"))
+
+    total = len(rows)
+    start = (page - 1) * per_page
+    window = rows[start:start + per_page]
+    return JSONResponse({
+        "shots": [r.as_dict() for r in window],
+        "page": page, "per_page": per_page, "total": total,
+        "pages": max(1, (total + per_page - 1) // per_page),
+        "summary": summary(),
+        # A cheap fingerprint the client polls to notice new ingestion without
+        # re-downloading a page it already has.
+        "catalog_version": f"{_date.today().isoformat()}:{summary()['total']}",
+    })
+
+
+@app.get("/api/shots/facets")
+async def api_shot_facets() -> JSONResponse:
+    """Filter options, counted — so the UI never offers a filter that matches nothing."""
+    from second_unit.shots_catalog import catalog, summary
+    rows = catalog()
+
+    def count(attr):
+        out = {}
+        for r in rows:
+            out[getattr(r, attr)] = out.get(getattr(r, attr), 0) + 1
+        return dict(sorted(out.items(), key=lambda kv: -kv[1]))
+
+    return JSONResponse({
+        "department": count("department"), "state": count("state"),
+        "sequence": count("sequence"), "priority": count("priority"),
+        "summary": summary(),
+    })
+
+
 @app.get("/api/vitals")
 async def api_vitals() -> JSONResponse:
     """Farm vitals for the Overview: throughput, queue, faulty nodes, cycle phase."""
@@ -812,13 +920,40 @@ async def ask_stream(request: Request) -> StreamingResponse:
 
 @app.post("/api/reset")
 async def reset() -> JSONResponse:
-    """`Reset scenario` — drop run state so the page returns to its empty state.
+    """Clear this session's runs and report where the scenario actually is.
 
-    In the deployed build this also restarts the seeder's incident clock so a judge sees
-    the incident from t+0 (scope doc §5.2). Here it clears server-side runs, which is the
-    part that exists.
+    This used to claim it reset the incident clock — the docstring said the deployed build
+    restarted the seeder and the response said "Incident clock back to t+0". Neither was
+    true. The farm is generated by a Cloud Run Job on its own loop and nothing here can
+    rewind it, so saying otherwise put a lie in the one product whose entire argument is
+    that it does not let an agent claim things that are not so.
+
+    What it does now: clears run state, and tells you where the cycle is, so "why is the
+    farm healthy?" has an answer instead of looking broken.
     """
     cleared = len(RUNS)
     RUNS.clear()
-    return JSONResponse({"ok": True, "cleared_runs": cleared,
-                         "message": "Scenario reset. Incident clock back to t+0."})
+
+    phase, minute, next_fault = None, None, None
+    try:
+        from second_unit import fleet
+        rows = fleet._prom_query('shot_review_deadline_seconds{shot="SH042"}')
+        if rows:
+            cycle_start = float(rows[0]["value"][1]) - 170 * 60
+            minute = round((time.time() - cycle_start) / 60)
+            phase = ("pre-fault" if minute < 0 else "fault building" if minute < 20
+                     else "degraded" if minute <= 170 else "past the review deadline"
+                     if minute < 180 else "repaired" if minute < 240 else "restarting")
+            if minute >= 180:
+                next_fault = max(0, 240 - minute)
+    except Exception:  # noqa: BLE001
+        pass
+
+    msg = f"Cleared {cleared} run(s)."
+    if phase:
+        msg += f" The farm is at cycle minute t{minute:+d} ({phase})."
+        if next_fault is not None:
+            msg += f" The next fault begins in about {next_fault} minutes."
+    return JSONResponse({"ok": True, "cleared_runs": cleared, "cycle_phase": phase,
+                         "cycle_minute": minute, "minutes_to_next_fault": next_fault,
+                         "message": msg})

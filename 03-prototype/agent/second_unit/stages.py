@@ -23,7 +23,12 @@ from .schemas import (
     WatchtowerReport,
     WriteResult,
 )
-from .tools import forecast_after_remediation, forecast_delivery, idle_cost
+from .tools import (
+    build_incident_dashboard,
+    forecast_after_remediation,
+    forecast_delivery,
+    idle_cost,
+)
 
 FLASH = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 STRONG = os.getenv("GEMINI_MODEL_STRONG", "gemini-2.5-pro")
@@ -34,8 +39,15 @@ render nodes chewing through frames for shots that have client review deadlines.
 
 HOW TO QUERY THIS STACK — these are not suggestions, they are properties of the data:
 
-1. Discover, never assume. Call list_datasources for the datasource UIDs and
+1. Discover, never assume. Call list_datasources ONCE for the datasource UIDs and
    list_prometheus_metric_names to learn what metrics exist. Do not invent metric names.
+
+   USE THE `uid`, NOT THE `name`. list_datasources returns both, and they differ: the
+   Prometheus source is named `grafanacloud-<stack>-prom` but its uid is
+   `grafanacloud-prom`; Loki is named `grafanacloud-<stack>-logs` with uid
+   `grafanacloud-logs`. Passing the name as datasourceUid returns nothing, which reads as
+   "no data" and has sent this agent into a retry loop that burned its whole tool budget.
+   Calling list_datasources repeatedly does not fix it — the answer does not change.
 2. ALWAYS use queryType "range" with startTime "now-90m", endTime "now" and
    stepSeconds 300. Instant queries on this stack routinely return an empty result even
    when the data is present, because the newest sample can be older than Prometheus's
@@ -295,8 +307,10 @@ nothing you think would also be a good idea. You are acting on someone else's au
 Rules:
 - Annotations: use create_annotation with tags including "second-unit" and "incident" so
   the crew can find and remove them later.
-- Dashboards: use update_dashboard. Keep it focused on the affected shot and node — a
-  panel a human cannot read at a glance is not useful during an incident.
+- Dashboards: you will not be asked to create one. Dashboard writes are composed and
+  performed by the harness over the same MCP connection, because carrying a multi-panel JSON
+  document between two tool calls is not something to trust to a text channel. If a
+  dashboard item reaches you anyway, report it as not attempted rather than improvising.
 - Alert rules: use alerting_manage_rules. Pick a threshold that would have fired for THIS
   incident but would not fire on a healthy farm.
 - After each write, call generate_deeplink where possible so the operator gets a URL.
@@ -305,7 +319,7 @@ Report one WriteResult per approved item, with the created object's URL or uid i
 If something fails, say so plainly with the error — a silent partial success is worse than
 a reported failure.
 """,
-        tools=[grafana_toolset(tool_filter=EXECUTOR_TOOLS)],
+        tools=[grafana_toolset(tool_filter=EXECUTOR_TOOLS), build_incident_dashboard],
         output_schema=list[WriteResult],
         output_key="write_results",
     )

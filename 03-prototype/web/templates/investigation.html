@@ -111,6 +111,9 @@
 .briefing[data-open="1"] .bscript{display:block}
 .briefing .berr{flex:1 1 100%; color:var(--red); font-size:.8rem; display:none}
 .briefing[data-error="1"] .berr{display:block}
+/* No verdict, no briefing. Offering to read aloud a finding that does not exist is worse
+   than offering nothing — it implies the run produced something. */
+html[data-no-verdict="1"] .briefing{display:none}
 
 /* the chooser overlay became the /start page */
 /* -------------------------------------------------------- subject switcher
@@ -152,11 +155,14 @@
    enough" — it is the wrong shot's evidence. Hide the whole run and show a call to action
    instead. Showing SH042's finding under an SH043 heading is the kind of thing that ends
    trust in a tool permanently. */
+/* Hide the WHOLE run block, not just the inner zone. The ids sit on inner divs, so hiding
+   those left the section headers behind — "PIPELINE 3 stages", "EVIDENCE 9 cited facts",
+   "requires human approval" — all counts from the wrong shot's run, sitting under a heading
+   that said no run existed. Exactly the contradiction this state was added to prevent. */
 html[data-subject-mismatch="1"] #verdictZone,
-html[data-subject-mismatch="1"] #stagesZone,
-html[data-subject-mismatch="1"] #evZone,
-html[data-subject-mismatch="1"] #wbZone,
-html[data-subject-mismatch="1"] #briefing{display:none}
+html[data-subject-mismatch="1"] .runblock,
+html[data-subject-mismatch="1"] #briefing,
+html[data-subject-mismatch="1"] .runfoot{display:none}
 .nosubject{display:none; text-align:center; padding:2.2rem 1rem}
 html[data-subject-mismatch="1"] .nosubject{display:block}
 .nosubject h3{margin:0 0 .35rem; font-size:1.15rem}
@@ -198,7 +204,30 @@ html[data-subject-mismatch="1"] .nosubject{display:block}
 .ask-ev .c{font-size:.85rem}
 .ask-ev .q{font-family:var(--mono); font-size:.74rem; color:var(--ink3); overflow-x:auto;
   display:block; white-space:pre; margin-top:.15rem}
-.ask-calls{font-family:var(--mono); font-size:.74rem; color:var(--ink3); margin-top:.3rem}
+/* The work, shown as it happens. A one-line counter told you a number was going up; the
+   pipeline gets a row per stage, and the ask box should not be a lesser citizen — the wait
+   is the evidence that something real is being measured. */
+.ask-calls{margin:.45rem 0 0; padding:0; list-style:none; display:grid; gap:.25rem}
+.ask-calls li{
+  display:flex; align-items:center; gap:.5rem; font-family:var(--mono); font-size:.75rem;
+  color:var(--ink2); background:var(--bg2); border:1px solid var(--line);
+  border-left:2px solid var(--cyan); border-radius:6px; padding:.3rem .5rem;
+  animation:askrow .18s ease-out;
+}
+@keyframes askrow{from{opacity:0; transform:translateY(-2px)}to{opacity:1; transform:none}}
+.ask-calls li .nm{color:var(--ink); font-weight:600}
+.ask-calls li .ms{margin-left:auto; color:var(--ink3)}
+.ask-calls li[data-pending="1"]{border-left-color:var(--amber); color:var(--ink3)}
+.ask-step{
+  display:flex; align-items:center; gap:.5rem; font-size:.82rem; color:var(--ink2);
+  margin:.15rem 0;
+}
+.ask-step .tick{color:var(--ok)}
+.ask-step .spin{
+  width:10px; height:10px; border-radius:50%; border:2px solid var(--line2);
+  border-top-color:var(--amber); animation:sp .7s linear infinite; flex:0 0 10px;
+}
+@keyframes sp{to{transform:rotate(360deg)}}
 html[data-persona="producer"] .ask-ev .q{display:none}
 
 /* per-persona: exactly ONE framing visible, and it works before JS runs.
@@ -381,6 +410,8 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
       <button class="btn" type="submit" id="askBtn">Ask</button>
     </form>
     <div class="ask-out" id="askOut">
+      <div id="askSteps"></div>
+      <ul class="ask-calls" id="askCalls"></ul>
       <p class="ask-status" id="askStatus"></p>
       <div id="askBody"></div>
     </div>
@@ -453,7 +484,7 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
     </div>
 
   <!-- ============================================================ 2. STAGES -->
-  <section class="panel">
+  <section class="panel runblock">
     <div class="panel-head">
       <h2>Pipeline</h2>
       <span class="note" id="stagesNote">3 stages · deterministic order</span>
@@ -486,7 +517,7 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
   </section>
 
   <!-- ============================================================ 3. EVIDENCE -->
-  <section class="panel">
+  <section class="panel runblock">
     <div class="panel-head">
       <h2>Evidence</h2>
       <span class="note" id="evNote">every claim carries the query that produced it</span>
@@ -512,7 +543,7 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
   </section>
 
   <!-- ============================================================ 4. WRITE-BACK -->
-  <section class="panel wb">
+  <section class="runblock "panel wb">
     <div class="panel-head">
       <h2>Proposed write-back</h2>
       <span class="note">requires human approval · nothing runs until it is given</span>
@@ -547,13 +578,14 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
   <!-- ============================================================ 5. ACTIONS -->
   <div class="actions">
     <button class="btn primary" id="btnRun" type="button">Run investigation</button>
-    <button class="btn" id="btnReset" type="button">Reset scenario</button>
+    <button class="btn" id="btnReset" type="button">Clear this run</button>
     <span class="hint" id="actionHint">Replay runs at {{ replay_speed }}× — the recorded run took 129.5s of real wall clock.</span>
   </div>
 
   <footer>
     SECOND UNIT · agentic triage for the render farm.<br>
-    Scenario <span id="fScenario">{{ scenario.id }}</span> · shot {{ scenario.shot }} ·
+    Scenario <span id="fScenario">{{ scenario.id }}</span> ·
+    shot <span id="fShot">{{ scenario.shot }}</span> ·
     {{ scenario.department }} · review deadline {{ scenario.review_deadline }}.<br>
     No accounts, no tracking, no external requests from this page.
   </footer>
@@ -628,7 +660,10 @@ const GRAFANA  = {{ grafana_url|tojson }};
 
 
 const STATE = {
-  runId: null, es: null, live: false, done: false, failed: false,
+  runId: null, es: null, live: false, done: false, failed: false, hasVerdict: false,
+  /* `live` means "streaming"; `liveAgents` means the agents actually ran just now. A
+     recorded replay is streamed too, and conflating the two mislabelled a replay as live. */
+  liveAgents: false,
   stages: {}, evidence: [], writeback: [], approved: false,
 };
 
@@ -676,7 +711,13 @@ function renderVerdict(v) {
   $("verdict").dataset.severity = v.severity || "critical";
   $("vSeverity").textContent = "⚠ " + String(v.severity || "").toUpperCase();
   $("vSubject").textContent = v.subject || "";
-  $("vStamp").textContent = STATE.live ? "live · just now" : "recorded " + (RECORDED.scenario.recorded_at || "");
+  /* STATE.live only means "arriving over the stream" — a recorded replay streams too. The
+     stamp must distinguish agents that just ran from a recording being replayed, or the
+     page tells the reader a recording is a live result. */
+  $("vStamp").textContent =
+    STATE.liveAgents ? "live · just now"
+    : STATE.live ? "replay of a recorded run · " + (RECORDED.scenario.recorded_at || "")
+    : "recorded " + (RECORDED.scenario.recorded_at || "");
   for (const pid of ["td", "supervisor", "producer"]) {
     const frame = document.querySelector('.frame[data-persona="' + pid + '"]');
     const p = (v.personas || {})[pid] || {};
@@ -935,6 +976,8 @@ function handle(ev) {
     }
 
     case "verdict":
+      STATE.hasVerdict = true;
+      document.documentElement.dataset.noVerdict = "0";
       renderVerdict(ev);
       break;
 
@@ -947,7 +990,7 @@ function handle(ev) {
 
     case "run_done":
       STATE.done = true;
-      status(STATE.live ? "run complete" : "recorded run", "live");
+      status(STATE.liveAgents ? "run complete" : "replay complete", "live");
       $("actionHint").textContent = ev.total_tool_calls + " MCP tool calls across " +
         ev.stages_ok + " stages · " + Number(ev.seconds).toFixed(1) + "s of real pipeline time.";
       break;
@@ -975,6 +1018,13 @@ function handle(ev) {
       break;
 
     case "run_failed":
+      /* Any stage still marked running has stopped — the run is over. Leaving it spinning
+         says the pipeline is working when it is not, which is the same class of untruth as
+         a replay stamped "live". */
+      document.querySelectorAll('.stage[data-state="running"]').forEach((el) => {
+        stageState(el.dataset.stage, "failed");
+      });
+      if (!STATE.hasVerdict) document.documentElement.dataset.noVerdict = "1";
       STATE.failed = true; STATE.done = true;
       $("vErrMsg").textContent = ev.error || "the run failed";
       zone("verdictZone", "error");
@@ -1007,7 +1057,13 @@ async function runInvestigation() {
        always investigate the default pass, and the subject bar would be decoration. */
     const q = new URLSearchParams();
     if (inject) q.set("inject", inject);
-    if (new URLSearchParams(location.search).get("live") === "1") q.set("live", "1");
+    /* Live is required when the selected shot is not the recording's subject: replaying a
+       recording of SH042 cannot answer a question about SH041, and doing so silently is
+       how the page ended up showing SH042's finding stamped "live" under an SH041 heading. */
+    const mustBeLive = SUBJECT.shot !== SUBJECT.recorded;
+    const wantsLive = new URLSearchParams(location.search).get("live") === "1";
+    STATE.liveAgents = mustBeLive || wantsLive;
+    if (STATE.liveAgents) q.set("live", "1");
     if (SUBJECT.shot) q.set("shot", SUBJECT.shot);
     const r = await fetch("/api/run" + (q.toString() ? "?" + q : ""),
       { method: "POST" });
@@ -1016,9 +1072,13 @@ async function runInvestigation() {
     STATE.runId = run_id; STATE.live = true; STATE.done = false;
     /* The run now IS about the selected shot, so the "no recorded run" state no longer
        applies — reveal the zones the stream is about to fill. */
-    STATE.runShot = SUBJECT.shot;      // the run is now about the selected shot
+    /* What the run is actually about — not what is selected. A recorded replay is about
+       the recording's shot however the switcher is set; claiming otherwise mislabels the
+       evidence, which is the one thing this page must never do. */
+    STATE.runShot = STATE.liveAgents ? SUBJECT.shot : SUBJECT.recorded;
     applySubjectMismatch();
-    status("live", "busy");
+    applySubjectMismatch();
+    status(STATE.liveAgents ? "agents running" : "replaying", "busy");
 
     const es = new EventSource("/api/run/" + run_id + "/stream");
     STATE.es = es;
@@ -1072,8 +1132,15 @@ $("btnReset").addEventListener("click", async () => {
   closeStream();
   const btn = $("btnReset");
   btn.disabled = true;
-  try { await fetch("/api/reset", { method: "POST" }); }
-  catch (_) { /* a failed reset still resets the page; say nothing and clear the view */ }
+  try {
+    const r = await fetch("/api/reset", { method: "POST" });
+    const d = await r.json().catch(() => null);
+    /* Report where the SCENARIO is, not a fiction about resetting it. The farm runs on a
+       loop in Cloud Run and nothing in this page can rewind it — pretending otherwise is
+       the exact failure this project exists to argue against. */
+    if (d && d.message) status(d.cycle_phase || "cleared", "");
+    if (d && d.message) $("stagesNote").textContent = d.message;
+  } catch (_) { /* a failed clear still clears the view */ }
   STATE.runId = null; STATE.live = false; STATE.done = false; STATE.approved = false;
   STATE.stages = {}; STATE.evidence = []; STATE.writeback = [];
   ["verdictZone", "stagesZone", "evZone", "wbZone"].forEach((z) => zone(z, "empty"));
@@ -1084,7 +1151,9 @@ $("btnReset").addEventListener("click", async () => {
   $("btnApprove").disabled = false;
   $("btnApprove").textContent = "Approve and write";
   $("wbResult").hidden = true;
-  $("actionHint").textContent = "Scenario reset. Incident clock back to t+0.";
+  /* Say what actually happened. Nothing here can rewind the farm — it is generated by a
+     Cloud Run job on its own loop — and this string claimed otherwise. */
+  $("actionHint").textContent = "Run cleared. The farm keeps running on its own cycle.";
   status("idle", "");
   btn.disabled = false;
 });
@@ -1159,6 +1228,9 @@ STATE.runShot = "{{ recorded_shot }}";
 function subjectRow() { return SUBJECT.shots.find((s) => s.shot === SUBJECT.shot); }
 
 function renderSubject() {
+  /* The footer named the recording's shot no matter what was selected, so a page headed
+     "no investigation for SH043" still footed "shot SH042". */
+  const f = $("fShot"); if (f) f.textContent = SUBJECT.shot;
   const sel = $("subjSel");
   if (SUBJECT.shots.length) {
     sel.innerHTML = SUBJECT.shots.map((s) =>
@@ -1192,6 +1264,7 @@ function applySubjectMismatch() {
   document.documentElement.dataset.subjectMismatch = mismatch ? "1" : "0";
   if (mismatch) {
     $("noSubjectTitle").textContent = "No investigation on this page for " + SUBJECT.shot;
+    $("btnRunSubject").textContent = "Run the agents on " + SUBJECT.shot + " now";
     $("noSubjectBody").textContent =
       "The run on this page investigated " + shown + ", and a recording cannot " +
       "be re-pointed after the fact. Running the agents now will investigate " +
@@ -1229,9 +1302,31 @@ function askState(st, statusText) {
   if (statusText !== undefined) $("askStatus").textContent = statusText;
 }
 
+/* The two-step pipeline, made visible: scope check, then measurement. Showing the router as
+   its own step is the point — it is why an out-of-scope question comes back in seconds
+   instead of after a minute of pointless querying. */
+function askSteps(scope, measure) {
+  const row = (label, state) =>
+    '<div class="ask-step">' +
+    (state === "done" ? '<span class="tick">✓</span>'
+     : state === "run" ? '<span class="spin"></span>'
+     : '<span class="dim">·</span>') +
+    "<span>" + esc(label) + "</span></div>";
+  $("askSteps").innerHTML = row("Scope check — can this farm's telemetry answer it?", scope) +
+    (measure ? row("Measuring against live telemetry", measure) : "");
+}
+
+function askCall(e) {
+  const li = document.createElement("li");
+  li.innerHTML = '<span class="nm">' + esc(e.name) + "</span>" +
+    '<span class="ms">' + (e.ms ? e.ms + "ms" : "") + "</span>";
+  $("askCalls").appendChild(li);
+}
+
 function askRender(e) {
   const body = $("askBody");
   if (e.type === "ask_rejected") {
+    askSteps("done", null);
     askState("rejected", "out of scope · answered without touching a tool");
     body.innerHTML = '<div class="ask-rejected"><p class="ask-answer">' + esc(e.reason) +
       "</p>" + (e.suggestion
@@ -1240,6 +1335,7 @@ function askRender(e) {
     return;
   }
   if (e.type === "ask_failed") {
+    askSteps("done", "done");
     askState("failed", "could not answer");
     body.innerHTML = '<p class="ask-answer">' +
       esc(e.hint || "The question could not be answered.") + "</p>" +
@@ -1247,6 +1343,7 @@ function askRender(e) {
     return;
   }
   if (e.type === "ask_answer") {
+    askSteps("done", "done");
     askState("done", "answered · " + ASK.calls + " tool call" + (ASK.calls === 1 ? "" : "s"));
     body.innerHTML =
       '<p class="ask-conf">confidence ' + esc(e.confidence) + "</p>" +
@@ -1269,7 +1366,9 @@ function askSubmit(question) {
   ASK.calls = 0;
   $("askInput").value = question;
   $("askBtn").disabled = true;
-  askState("routing", "checking whether this farm's telemetry can answer that…");
+  askState("routing", "");
+  askSteps("run", null);
+  $("askCalls").innerHTML = "";
   $("askBody").innerHTML = "";
 
   /* Carry the selected subject so the answer is about the pass on screen. */
@@ -1278,11 +1377,11 @@ function askSubmit(question) {
   askES.onmessage = (m) => {
     let e; try { e = JSON.parse(m.data); } catch (_) { return; }
     if (e.type === "ask_accepted") {
-      askState("working", "in scope — measuring…");
+      askState("working", "");
+      askSteps("done", "run");
     } else if (e.type === "tool_call") {
       ASK.calls++;
-      askState("working", "measuring… " + ASK.calls + " tool call" +
-        (ASK.calls === 1 ? "" : "s") + " (" + e.name + ")");
+      askCall(e);
     } else if (e.type === "ask_answer" || e.type === "ask_rejected" || e.type === "ask_failed") {
       askRender(e);
       askES.close(); askES = null;
@@ -1340,7 +1439,7 @@ function hydrateRecorded() {
   }
   if (demo === "loading") {
     ["verdictZone", "stagesZone", "evZone", "wbZone"].forEach((z) => zone(z, "loading"));
-    status("live", "busy");
+    status(STATE.liveAgents ? "agents running" : "replaying", "busy");
     return;
   }
   if (demo === "error") {

@@ -8,6 +8,7 @@ Every run produces a RunRecord: the typed output of each stage plus the full too
 ledger. That record is what the UI renders and what makes the agent's work auditable —
 if a claim is not traceable to a tool call in here, it does not get shown.
 """
+import asyncio
 import json
 import time
 from dataclasses import dataclass, field
@@ -19,6 +20,61 @@ from google.genai import types
 
 APP = "second_unit"
 USER = "crew"
+
+
+async def _write_dashboard_via_mcp(proposed, *, verbose: bool = True):
+    """Compose the incident dashboard in Python and write it through the MCP bridge.
+
+    Still an MCP write — same server, same credentials, same audit trail — just without
+    asking a model to act as a JSON courier.
+    """
+    import os
+    import re as _re
+
+    from mcp import ClientSession
+    from mcp.client.streamable_http import streamablehttp_client
+
+    from .schemas import WriteResult
+    from .tools import build_incident_dashboard
+
+    # Pull the subject out of what the planner proposed; fall back to the scenario default.
+    text = f"{proposed.title} {proposed.details}"
+    shot = (_re.search(r"\bSH\d{3}\b", text) or [None])
+    shot = shot.group(0) if hasattr(shot, "group") else "SH042"
+    node = _re.search(r"\brender-\d{2}\b", text)
+    node = node.group(0) if node else "render-07"
+
+    dash = build_incident_dashboard(shot, node)
+    headers = {
+        "Authorization": f"Bearer {os.environ['MCP_GRAFANA_SERVER_TOKEN']}",
+        "Accept": "application/json, text/event-stream",
+    }
+    try:
+        async with streamablehttp_client(
+            os.environ["MCP_GRAFANA_URL"], headers=headers, timeout=45
+        ) as (r, w, _):
+            async with ClientSession(r, w) as session:
+                await asyncio.wait_for(session.initialize(), timeout=30)
+                res = await asyncio.wait_for(
+                    session.call_tool("update_dashboard",
+                                      {"dashboard": dash, "overwrite": True}),
+                    timeout=90)
+                payload = "".join(getattr(c, "text", "") for c in res.content)
+                if res.isError:
+                    return WriteResult(action="dashboard", succeeded=False,
+                                       detail=_clean_detail(payload))
+                uid = ""
+                try:
+                    uid = json.loads(payload).get("uid", "")
+                except Exception:  # noqa: BLE001
+                    pass
+                if verbose:
+                    print(f"    → update_dashboard(built in Python) → {uid or 'ok'}")
+                return WriteResult(action="dashboard", succeeded=True,
+                                   detail=_clean_detail(uid or payload))
+    except Exception as exc:  # noqa: BLE001
+        return WriteResult(action="dashboard", succeeded=False,
+                           detail=_clean_detail(f"{type(exc).__name__}: {exc}"))
 
 
 def _clean_detail(text: str, limit: int = 240) -> str:
@@ -162,6 +218,19 @@ async def execute_approved_writes(plan, approval: Optional[Approval], *, verbose
     combined = StageResult(stage="remediation_executor", output=[], raw_text="")
 
     for n, w in enumerate(chosen, 1):
+        # DASHBOARDS ARE WRITTEN BY CODE, over the same MCP connection.
+        #
+        # `update_dashboard` accepts our generated JSON perfectly — verified directly. What
+        # failed, eight times in one run, was the model carrying that JSON: it must copy a
+        # five-panel document out of one tool's output and into the next tool's argument,
+        # and a large structured payload round-tripping through a language model does not
+        # survive. The model still decides WHETHER to create a dashboard and what it is
+        # about; the document and the call are ours. Same division as everywhere else here —
+        # the model decides what it finds, code decides what happens.
+        if "dashboard" in (w.action or "").lower():
+            r = await _write_dashboard_via_mcp(w, verbose=verbose)
+            results.append(r)
+            continue
         task = (
             f"Approved by {approval.approved_by}. Perform EXACTLY ONE write, this one, "
             f"then stop and report it:\n\n"

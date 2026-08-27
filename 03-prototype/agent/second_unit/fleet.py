@@ -88,6 +88,25 @@ def fleet_status(deadline_iso: str, *, window: str = "15m") -> List[ShotStatus]:
         remaining = _prom_query("shot_frames_remaining")
         rates = _prom_query(
             f"sum by (shot) (rate(render_frames_completed_total[{window}])) * 60")
+        # Slow passes need a wider window.
+        #
+        # A slate shot renders over days, so it completes about four frames in fifteen
+        # minutes — and `rate()` over that window rounds to zero. The console then said
+        # "no completions in window", which is the vocabulary for a STALLED pass. Reporting
+        # a healthy slow pass as stalled is a false alarm, and false alarms are how an
+        # operator learns to ignore a screen. Anything the short window cannot see is
+        # re-measured over an hour before we conclude nothing is happening.
+        by_shot = {r["metric"].get("shot"): float(r["value"][1]) for r in rates}
+        if any(v <= 0 for v in by_shot.values()) or len(by_shot) < len(remaining):
+            wide = _prom_query(
+                "sum by (shot) (rate(render_frames_completed_total[1h])) * 60")
+            for r in wide:
+                sh = r["metric"].get("shot")
+                v = float(r["value"][1])
+                if v > 0 and by_shot.get(sh, 0.0) <= 0:
+                    by_shot[sh] = v
+            rates = [{"metric": {"shot": k}, "value": [0, str(v)]}
+                     for k, v in by_shot.items()]
     except Exception as exc:  # noqa: BLE001
         last_error = f"{type(exc).__name__}: {str(exc)[:160]}"
         return []

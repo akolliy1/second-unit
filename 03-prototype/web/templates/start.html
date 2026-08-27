@@ -21,18 +21,6 @@
    here needs no change to _base.html. */
 .docs code{overflow-wrap:anywhere}
 
-/* ------------------------------------------- base-layout workaround (≤860px)
-   `_base.html` intends to hide the rail below 860px, but its
-   `@media (max-width:860px){ .rail{display:none} }` sits ABOVE the later
-   `.rail{display:flex; …}` component rule, and a media query adds no specificity — so the
-   component rule wins, the rail keeps `display:flex`, loses its named grid area (the
-   ≤860 areas are "top"/"main"/"docs") and becomes an implicit grid item. Measured at
-   390px: `main` gets 215px and the rail sits in a 174px implicit column on the right.
-   Re-stating the rule here fixes it for this page only, because page CSS is appended last
-   inside the base stylesheet. `html[data-nav="1"] .rail` is more specific, so the ☰
-   overlay still opens. The proper fix is a source-order change in _base.html, which is
-   outside the two files this task may edit and is reported rather than made. */
-@media (max-width:860px){ .rail{display:none} }
 
 .lede{max-width:64ch; color:var(--ink2); font-size:.95rem; margin:.2rem 0 1.1rem}
 .lede b{color:var(--ink)}
