@@ -237,7 +237,7 @@ document.querySelectorAll(".role").forEach((a) => {
 const STATUS_TEXT = {critical:"critical", at_risk:"at risk", on_track:"on track",
                      done:"done", unknown:"unknown"};
 function fmtHours(h){
-  if (h === null || h === undefined || isNaN(h)) return ", ";
+  if (h === null || h === undefined || isNaN(h)) return "–";
   const mins = Math.round(Math.abs(h) * 60);
   const s = mins >= 60 ? Math.floor(mins/60) + "h " + String(mins%60).padStart(2,"0") + "m"
                        : mins + "m";
@@ -303,7 +303,7 @@ function line(kind, glyph, html){
   if (worst){
     line("warn", "▲",
       "<b>" + shots.length + " shots in flight · " + ex.length + " forecast to miss review</b>, " +
-      "worst is <b>" + esc(worst.shot) + "</b> (" + esc(worst.department || ", ") + "), " +
+      "worst is <b>" + esc(worst.shot) + "</b> (" + esc(worst.department || "–") + "), " +
       esc(STATUS_TEXT[worst.status] || worst.status) + ", " +
       fmtHours(worst.slip_hours) + " past the " + dl + " deadline." +
       "<span class=\"sub\">Pick a lens above and the Overview explains that in your " +

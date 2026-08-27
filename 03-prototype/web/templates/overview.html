@@ -314,7 +314,7 @@ html:not([data-persona="td"]):not([data-persona="supervisor"]):not([data-persona
       <h3>Slate</h3>
       <p class="lede">The catalogue, every shot the production has ingested, not just the
         ones rendering now.</p>
-      <div class="big"><span class="n" id="slTotal">, </span><span class="u">shots total</span></div>
+      <div class="big"><span class="n" id="slTotal">–</span><span class="u">shots total</span></div>
       <div class="body">
         <ul class="mrows" id="slRows">
           <li><span class="l">reading the catalogue…</span></li>
@@ -328,7 +328,7 @@ html:not([data-persona="td"]):not([data-persona="supervisor"]):not([data-persona
       <h3>Farm</h3>
       <p class="lede">The render farm right now: what is being measured, how fast it is
         going, and what is broken.</p>
-      <div class="big"><span class="n" id="fmWatched">, </span><span class="u">shots with live telemetry</span></div>
+      <div class="big"><span class="n" id="fmWatched">–</span><span class="u">shots with live telemetry</span></div>
       <div class="body">
         <ul class="mrows" id="fmRows">
           <li><span class="l">reading vitals…</span></li>
@@ -353,7 +353,7 @@ html:not([data-persona="td"]):not([data-persona="supervisor"]):not([data-persona
       <h3>Agent</h3>
       <p class="lede">What the agent did, and how much of what it said it wrote actually
         turned up in the stack.</p>
-      <div class="big"><span class="n" id="agCalls">, </span><span class="u" id="agCallsU">tool calls</span></div>
+      <div class="big"><span class="n" id="agCalls">–</span><span class="u" id="agCallsU">tool calls</span></div>
       <div class="body" id="agBody">
         <span class="skel">reading agent telemetry…</span>
       </div>
@@ -371,11 +371,11 @@ html:not([data-persona="td"]):not([data-persona="supervisor"]):not([data-persona
   </div>
   <div class="card" id="scenCard">
     <div class="scen">
-      <div><span class="k">Cycle phase</span><span class="v" id="scPhase">, </span>
+      <div><span class="k">Cycle phase</span><span class="v" id="scPhase">–</span>
         <span class="d" id="scPhaseD">from /api/vitals cycle_phase</span></div>
-      <div><span class="k">Minute in loop</span><span class="v" id="scMin">, </span>
+      <div><span class="k">Minute in loop</span><span class="v" id="scMin">–</span>
         <span class="d">of ~240, from /api/vitals cycle_minute</span></div>
-      <div><span class="k">Next fault injected</span><span class="v" id="scNext">, </span>
+      <div><span class="k">Next fault injected</span><span class="v" id="scNext">–</span>
         <span class="d" id="scNextD">derived from the loop position</span></div>
     </div>
     <div class="track" id="scTrack" hidden><i id="scFill"></i><b id="scMark"></b></div>
@@ -534,20 +534,20 @@ const S = {fleet:null, fleetErr:null, vitals:null, vitalsErr:null,
 const num = (n) => Number(n).toLocaleString("en-US");
 function fmtHours(h){
   /* Slip is signed hours as a float. Producers read "2h 18m", not "2.31". */
-  if (h === null || h === undefined || isNaN(h)) return ", ";
+  if (h === null || h === undefined || isNaN(h)) return "–";
   const mins = Math.round(Math.abs(h) * 60);
   const s = mins >= 60 ? Math.floor(mins/60) + "h " + String(mins%60).padStart(2,"0") + "m"
                        : mins + "m";
   return (h < 0 ? "-" : "") + s;
 }
 function fmtClock(iso){
-  if (!iso) return ", ";
+  if (!iso) return "–";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return String(iso);   // never swallow a shape we did not expect
   return d.toLocaleString([], {weekday:"short", hour:"2-digit", minute:"2-digit"});
 }
 function fmtMins(m){
-  if (m === null || m === undefined || isNaN(m)) return ", ";
+  if (m === null || m === undefined || isNaN(m)) return "–";
   m = Math.round(m);
   return m >= 60 ? Math.floor(m/60) + "h " + String(m%60).padStart(2,"0") + "m" : m + " min";
 }
@@ -600,9 +600,9 @@ function frow(s){
   const slipBad = typeof s.slip_hours === "number" && s.slip_hours > 0;
   const cells = [
     ["frames left", s.frames_remaining === null || s.frames_remaining === undefined
-      ? ", ": num(s.frames_remaining), ""],
+      ? "–" : num(s.frames_remaining), ""],
     ["rate", (typeof s.rate_per_min === "number" && s.rate_per_min > 0)
-      ? s.rate_per_min.toFixed(1) + " fr/min": ", ", ""],
+      ? s.rate_per_min.toFixed(1) + " fr/min": "–", ""],
     ["eta", fmtClock(s.eta), ""],
     ["slip", fmtHours(s.slip_hours), slipBad ? "slipbad" : ""],
   ].map(([k,v,cls]) =>
@@ -610,7 +610,7 @@ function frow(s){
     esc(v) + "</span></span>").join("");
   return '<div class="frow" data-s="' + st + '">' +
     '<span class="who"><span class="shot">' + esc(s.shot) + '</span>' +
-    '<span class="dept">' + esc(s.department || ", ") + "</span></span>" +
+    '<span class="dept">' + esc(s.department || "–") + "</span></span>" +
     pill(st) + cells +
     (s.note ? '<span class="note-line">' + esc(s.note) + "</span>" : "") +
     "</div>";
@@ -779,9 +779,8 @@ function renderIncident(){
     const facts = factList([
       ["Shots in flight", b.total + " (" + b.done + " done, " + b.on_track + " on track" +
                           (b.unk.length ? ", " + b.unk.length + " unmeasurable" : "") + ")"],
-      ["Review deadline", (dl || ", ") + (placeholder ? " (placeholder)": "")],
-      ["Throughput now", v.throughput_now == null ? ", "
-        : v.throughput_now.toFixed(1) + " fr/min"],
+      ["Review deadline", (dl || "–") + (placeholder ? " (placeholder)": "")],
+      ["Throughput now", v.throughput_now == null ? "–" : v.throughput_now.toFixed(1) + " fr/min"],
       ["Nodes with faults", faulty.length ? faulty.join(", ") : "none in the last 30m"],
     ]);
     const pFacts = factList([
@@ -815,7 +814,7 @@ function renderIncident(){
   card.dataset.sev = s.status === "critical" ? "critical" : "at_risk";
   p.dataset.s = s.status;
   setText(p, STATUS_GLYPH[s.status] + " " + STATUS_TEXT[s.status]);
-  setText(meta, s.shot + " · " + (s.department || ", ") +
+  setText(meta, s.shot + " · " + (s.department || "–") +
     (b.exc.length > 1 ? " · worst of " + b.exc.length + " exceptions" : "") +
     (placeholder ? " · deadline is a placeholder" : ""));
   setText(btn, s.shot === RECORDED_SHOT ? "Investigate " + s.shot : "Open investigation");
@@ -843,10 +842,10 @@ function renderIncident(){
         ". " + nodeLine + "." + others,
       factList([
         ["Status", STATUS_TEXT[s.status] || s.status],
-        ["Frames / rate", (s.frames_remaining != null ? num(s.frames_remaining): ", ") +
+        ["Frames / rate", (s.frames_remaining != null ? num(s.frames_remaining): "–") +
                           " @ " + rate],
-        ["ETA / deadline", (s.eta || ", ") + " / " + (dl || ", ")],
-        ["Slip (hours)", s.slip_hours == null ? ", ": String(s.slip_hours)],
+        ["ETA / deadline", (s.eta || "–") + " / " + (dl || "–")],
+        ["Slip (hours)", s.slip_hours == null ? "–" : String(s.slip_hours)],
         ["ECC in 30m", "sum by (node) (increase(render_node_gpu_ecc_errors_total[30m])) > 0 → " +
                        (faulty.length ? faulty.join(", ") : "∅")],
         ["Rate query", "sum by (shot) (rate(render_frames_completed_total[15m])) * 60"],
@@ -863,8 +862,8 @@ function renderIncident(){
           : "No single node is faulted, so this is a capacity shortfall rather than one " +
             "broken machine.") + others,
       factList([
-        ["Shot / department", s.shot + " · " + (s.department || ", ")],
-        ["Frames remaining", s.frames_remaining != null ? num(s.frames_remaining): ", "],
+        ["Shot / department", s.shot + " · " + (s.department || "–")],
+        ["Frames remaining", s.frames_remaining != null ? num(s.frames_remaining): "–"],
         ["Completion rate", rate],
         ["ETA vs deadline", fmtClock(s.eta) + " vs " + fmtClock(dl)],
         ["Slip", slip],
@@ -885,7 +884,7 @@ function renderIncident(){
         ["Review is at", fmtClock(dl) + (placeholder ? ", placeholder, not a real date": "")],
         ["Forecast delivery", fmtClock(s.eta)],
         ["Late by", slip],
-        ["Work left", (s.frames_remaining != null ? num(s.frames_remaining) + " frames": ", ")],
+        ["Work left", (s.frames_remaining != null ? num(s.frames_remaining) + " frames": "–")],
       ])));
 
   /* The hint is one line and persona-shaped, but it carries no metric names in any frame,
@@ -914,10 +913,10 @@ function renderSlate(){
   const st = sum.by_state || {};
   big.className = "n"; setText(big, num(sum.total || 0));
   setHTML(rows,
-    mrow("ingested today", sum.ingested_today == null ? ", ": num(sum.ingested_today)) +
-    mrow("rendering", st.rendering == null ? ", ": num(st.rendering)) +
-    mrow("complete", st.complete == null ? ", ": num(st.complete), "ok") +
-    mrow("ingesting for", (sum.days_ingesting == null ? ", ": sum.days_ingesting + " days") +
+    mrow("ingested today", sum.ingested_today == null ? "–" : num(sum.ingested_today)) +
+    mrow("rendering", st.rendering == null ? "–" : num(st.rendering)) +
+    mrow("complete", st.complete == null ? "–" : num(st.complete), "ok") +
+    mrow("ingesting for", (sum.days_ingesting == null ? "–" : sum.days_ingesting + " days") +
          (sum.per_day ? " @ " + sum.per_day + "/day" : "")));
 }
 
@@ -1061,7 +1060,7 @@ function renderAgent(){
     const cls = key === "false_success"
       ? (Number(n || 0) > 0 ? "claim alarm" : "claim zero")
       : "claim";
-    return '<div class="' + cls + '"><span class="cn">' + (has ? num(Math.round(n)): ", ") +
+    return '<div class="' + cls + '"><span class="cn">' + (has ? num(Math.round(n)): "–") +
       '</span><span class="cl">' + esc(label) + "</span></div>";
   }).join("");
 

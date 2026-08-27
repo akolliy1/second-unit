@@ -687,7 +687,7 @@ html[data-motion="1"] .mq:hover .mq-track{ animation-play-state:paused }
   function setNum(el, value) {
     if (!el) return;
     var target = Number(value);
-    if (!isFinite(target)) { el.textContent = ", "; return; }
+    if (!isFinite(target)) { el.textContent = "–"; return; }
     if (!motion || target === 0) { el.textContent = fmt(target); return; }
     var t0 = null, DUR = 900;
     function frame(ts) {
@@ -744,7 +744,7 @@ html[data-motion="1"] .mq:hover .mq-track{ animation-play-state:paused }
   /* /api/agent/metrics asks Prometheus six questions and the service handles it on
      the event loop, so in flight it delays everything behind it. Firing all three
      fetches at once therefore made the ABOVE-THE-FOLD numbers wait on the slowest
-     one, the slate sat at ", " for eight seconds. Deliberately sequenced: the two
+     one, the slate sat at "–" for eight seconds. Deliberately sequenced: the two
      cheap calls fill the strip first, the expensive one lands when it lands. */
   var metricsP = Promise.all([shotsP, fleetP]).then(function () {
     return getJSON("/api/agent/metrics");

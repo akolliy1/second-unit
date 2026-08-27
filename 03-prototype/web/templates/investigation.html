@@ -122,6 +122,18 @@ html[data-no-verdict="1"] .briefing{display:none}
    belongs on /shots, which already filters and sorts. What a detail view needs is a compact
    way to say which subject it is showing and to move to another, so this is a switcher, not
    a list. */
+.crumb{
+  display:flex; align-items:center; flex-wrap:wrap; gap:.3rem;
+  font-size:.76rem; color:var(--ink3); margin:0 0 .4rem;
+}
+.crumb .c{color:var(--ink2)}
+.crumb .c.title{color:var(--ink); font-weight:600}
+.crumb .c.unit{font-family:var(--mono); color:var(--ink); background:var(--panel2);
+  border:1px solid var(--line); border-radius:5px; padding:.02rem .3rem}
+.crumb .c.here{color:var(--ink); font-family:var(--mono)}
+.crumb .sep{color:var(--ink3); opacity:.7}
+.crumb .kindchip{font-size:.62rem; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--ink3); border:1px solid var(--line); border-radius:999px; padding:.02rem .35rem}
 .subjbar{
   display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; margin:0 0 1rem;
   padding:.5rem .7rem; background:var(--panel); border:1px solid var(--line);
@@ -383,12 +395,18 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
 
 
   <!-- ======================================================= 0. SUBJECT -->
+  <!-- The production path. A shot id alone does not say what is at stake; "Northwind
+       S01E04" does, because the episode is what gets delivered and what can be missed.
+       Rendered from /api/shot/{shot}, which answers for any real shot whether or not the
+       farm is currently working on it, so the crumb does not go blank on the deep link it
+       most needs to explain. -->
+  <nav class="crumb" id="subjCrumb" aria-label="Production path" hidden></nav>
   <div class="subjbar">
     <span class="lbl">Investigating</span>
     <select class="subjsel" id="subjSel" aria-label="Which shot to investigate">
       <option value="SH042">SH042 · lighting</option>
     </select>
-    <span class="pill" id="subjStatus" data-status="">, </span>
+    <span class="pill" id="subjStatus" data-status="">–</span>
     <span class="meta" id="subjMeta"></span>
     <span class="spacer"></span>
     <a class="allshots" href="/shots">All shots →</a>
@@ -445,7 +463,7 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
       <div class="verdict" data-severity="none">
         <div class="errcard">
           <div class="etitle">✗ The investigation did not reach a verdict</div>
-          <div class="emsg" id="vErrMsg">, </div>
+          <div class="emsg" id="vErrMsg">–</div>
           <div class="ehint">No verdict is shown because no stage produced one. Nothing was written to Grafana.
             The stage stream below shows how far the pipeline got.</div>
         </div>
@@ -490,7 +508,7 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
       <div class="st st-ready">
         <div class="errcard" id="stagesErr" style="margin:1rem" hidden>
           <div class="etitle">✗ Pipeline halted</div>
-          <div class="emsg" id="stagesErrMsg">, </div>
+          <div class="emsg" id="stagesErrMsg">–</div>
           <div class="ehint">A stage whose output fails schema validation is a failed stage, not prose to
             reinterpret, so nothing downstream of it ran.</div>
         </div>
@@ -505,7 +523,7 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
       <div class="st st-error" style="padding:1rem">
         <div class="errcard">
           <div class="etitle">✗ The pipeline did not start</div>
-          <div class="emsg" id="stagesErrMsg2">, </div>
+          <div class="emsg" id="stagesErrMsg2">–</div>
           <div class="ehint">No stage ran, so there is nothing to show. This is a transport or
             server-side failure, not a failed diagnosis.</div>
         </div>
@@ -535,7 +553,7 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
       <div class="st st-error"><div class="panel-body">
         <div class="errcard">
           <div class="etitle">✗ Evidence unavailable</div>
-          <div class="emsg" id="evErrMsg">, </div>
+          <div class="emsg" id="evErrMsg">–</div>
           <div class="ehint">Claims without citeable evidence are not shown at all. That is deliberate.</div>
         </div>
       </div></div>
@@ -570,7 +588,7 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
       <div class="st st-error"><div class="panel-body">
         <div class="errcard">
           <div class="etitle">✗ Approval failed</div>
-          <div class="emsg" id="wbErrMsg">, </div>
+          <div class="emsg" id="wbErrMsg">–</div>
           <div class="ehint">Nothing was written. You can retry the approval, or re-run the investigation.</div>
         </div>
         <div class="wbfoot"><button class="btn" id="btnApproveRetry" type="button">Retry approval</button></div>
@@ -770,7 +788,7 @@ function stageRow(id, label, role) {
       '<span class="stage-name">' + esc(label) + "</span>" +
       '<span class="stage-role">' + esc(role || "") + "</span>" +
       '<span class="stage-pill">pending</span>' +
-      '<span class="stage-meta">, </span>' +
+      '<span class="stage-meta">–</span>' +
     "</button><div class='stage-body'></div>";
   const head = li.querySelector(".stage-head");
   head.addEventListener("click", () => {
@@ -1299,6 +1317,38 @@ function subjectOptions() {
   return html;
 }
 
+/* Kept out of renderSubject because it is a fetch and renderSubject runs on every local
+   state change; a crumb that refetched on each keystroke would be noise on the network for
+   information that only changes when the shot does. */
+let crumbFor = null;
+async function renderCrumb() {
+  const el = $("subjCrumb"), shot = SUBJECT.shot;
+  if (!shot || crumbFor === shot) return;
+  crumbFor = shot;
+  try {
+    const r = await fetch("/api/shot/" + encodeURIComponent(shot),
+                          {headers: {accept: "application/json"}});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const h = await r.json();
+    const row = subjectRow();
+    const dept = (row && row.department) || h.department || "";
+    const sep = '<span class="sep" aria-hidden="true">›</span>';
+    el.innerHTML =
+      `<span class="c title">${esc(h.title)}</span>` +
+      `<span class="kindchip">${esc(h.kind)}</span>` + sep +
+      `<span class="c unit">${esc(h.unit)}</span>` + sep +
+      `<span class="c">${esc(h.sequence)}</span>` + sep +
+      `<span class="c here">${esc(shot)}</span>` +
+      (dept ? sep + `<span class="c">${esc(dept)}</span>` : "");
+    el.hidden = false;
+  } catch (_) {
+    /* No crumb is better than a half-built one that implies a deliverable we could not
+       confirm. The subject bar below still names the shot. */
+    el.hidden = true;
+    crumbFor = null;
+  }
+}
+
 function renderSubject() {
   /* The footer named the recording's shot no matter what was selected, so a page headed
      "no investigation for SH043" still footed "shot SH042". */
@@ -1320,6 +1370,7 @@ function renderSubject() {
             : ""))
     : "";
   applySubjectMismatch();
+  renderCrumb();
 }
 
 function applySubjectMismatch() {

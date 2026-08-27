@@ -219,7 +219,7 @@ html[data-agentalarm="1"] #claimSection{display:block}
     <div class="st st-error">
       <div class="errbox">
         <div class="t">✗ Could not read the agent's own metrics</div>
-        <div class="m" id="claimErrMsg">, </div>
+        <div class="m" id="claimErrMsg">–</div>
         <div class="h">No verification result is shown, because none was read. The agent may have
           run perfectly; this page simply does not know, and says so rather than guessing.</div>
       </div>
@@ -266,7 +266,7 @@ html[data-agentalarm="1"] #claimSection{display:block}
               Nothing is inferred in its absence.</p></div>
         </div>
         <div class="st st-error"><div class="errbox"><div class="t">✗ Metrics unavailable</div>
-          <div class="m" id="costErrMsg">, </div></div></div>
+          <div class="m" id="costErrMsg">–</div></div></div>
       </div>
     </div>
   </section>
@@ -292,7 +292,7 @@ html[data-agentalarm="1"] #claimSection{display:block}
               remediation planner has no tools at all, by construction.</p></div>
         </div>
         <div class="st st-error"><div class="errbox"><div class="t">✗ Metrics unavailable</div>
-          <div class="m" id="latErrMsg">, </div></div></div>
+          <div class="m" id="latErrMsg">–</div></div></div>
       </div>
     </div>
   </section>
@@ -315,7 +315,7 @@ html[data-agentalarm="1"] #claimSection{display:block}
           </div>
         </div>
         <div class="st st-error"><div class="errbox"><div class="t">✗ Metrics unavailable</div>
-          <div class="m" id="failErrMsg">, </div></div></div>
+          <div class="m" id="failErrMsg">–</div></div></div>
       </div>
     </div>
   </section>
@@ -676,13 +676,13 @@ the strong model is also the first to hit a quota, and a degraded-but-answering 
             <em>${esc(meta.role)}${meta.tier ? ` <span class="tier" data-t="${meta.tier}">${meta.tier}</span>` : ""}</em>
           </div>
           <div class="bar"><span style="width:${sw}%"></span></div>
-          <div class="val${slowest ? " hot": ""}">${sec.has(s) ? secs(sec.get(s)): ", "}</div>
+          <div class="val${slowest ? " hot": ""}">${sec.has(s) ? secs(sec.get(s)): "–"}</div>
           <div class="nm dim" style="font-size:.68rem">${calls.has(s) ? num(calls.get(s)) + " tool calls" : "no tool calls"}</div>
           <div class="bar two">
             <span class="p" style="width:${pw}%"></span>
             <span class="c" style="left:${pw}%;width:${cw}%"></span>
           </div>
-          <div class="val">${tot ? num(tot) + " tok": ", "}</div>
+          <div class="val">${tot ? num(tot) + " tok": "–"}</div>
         </div>`;
     }).join("");
 

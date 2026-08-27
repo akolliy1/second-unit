@@ -655,6 +655,7 @@ def _deadline_and_shots():
 @app.get("/api/fleet")
 async def api_fleet() -> JSONResponse:
     """Every in-flight shot with its own forecast. The Overview's triage strip."""
+    from second_unit.shots_catalog import hierarchy
     try:
         dl, shots, fleet, run_mod = _deadline_and_shots()
     except Exception as exc:  # noqa: BLE001
@@ -667,11 +668,14 @@ async def api_fleet() -> JSONResponse:
         "error": fleet.last_error,
         "deadline_is_placeholder": bool(run_mod.deadline_fallback_reason),
         "deadline_placeholder_reason": run_mod.deadline_fallback_reason,
+        # Joined by shot id, from the catalogue. A live row knowing which episode it feeds
+        # is what lets a finding read "Northwind S01E04 is at risk" instead of "SH1042 is".
         "shots": [
-            {"shot": s.shot, "department": s.department, "status": s.status,
-             "frames_remaining": s.frames_remaining, "rate_per_min": s.rate_per_min,
-             "eta": s.eta_iso, "deadline": s.deadline_iso, "slip_hours": s.slip_hours,
-             "note": s.note}
+            dict({"shot": s.shot, "department": s.department, "status": s.status,
+                  "frames_remaining": s.frames_remaining, "rate_per_min": s.rate_per_min,
+                  "eta": s.eta_iso, "deadline": s.deadline_iso, "slip_hours": s.slip_hours,
+                  "note": s.note},
+                 **(hierarchy(s.shot) or {}))
             for s in shots
         ],
         "exceptions": [s.shot for s in shots if s.is_exception],
@@ -689,7 +693,7 @@ async def api_shots(request: Request) -> JSONResponse:
     """
     from datetime import date as _date
 
-    from second_unit.shots_catalog import catalog, summary
+    from second_unit.shots_catalog import catalog, summary, active
 
     q = request.query_params
     try:
@@ -709,6 +713,8 @@ async def api_shots(request: Request) -> JSONResponse:
     state = (q.get("state") or "").lower()
     seq = (q.get("sequence") or "").upper()
     prio = (q.get("priority") or "").lower()
+    title = (q.get("title") or "").strip()
+    unit = (q.get("unit") or "").strip().upper()
     search = (q.get("q") or "").strip().upper()
     if dept:
         rows = [r for r in rows if r.department == dept]
@@ -718,8 +724,14 @@ async def api_shots(request: Request) -> JSONResponse:
         rows = [r for r in rows if r.sequence == seq]
     if prio:
         rows = [r for r in rows if r.priority == prio]
+    if title:
+        rows = [r for r in rows if r.title.lower() == title.lower()]
+    if unit:
+        rows = [r for r in rows if r.unit == unit]
     if search:
-        rows = [r for r in rows if search in r.shot or search in r.sequence]
+        rows = [r for r in rows
+                if search in r.shot or search in r.sequence
+                or search in r.unit or search in r.title.upper()]
 
     sort = q.get("sort") or "newest"
     keys = {
@@ -727,6 +739,7 @@ async def api_shots(request: Request) -> JSONResponse:
         "due": lambda r: (r.due_on, r.shot),
         "frames": lambda r: r.total_frames,
         "shot": lambda r: r.shot,
+        "unit": lambda r: (r.kind != "series", r.title, r.unit, r.shot),
     }
     rows.sort(key=keys.get(sort, keys["newest"]),
               reverse=sort in ("newest", "frames"))
@@ -734,8 +747,21 @@ async def api_shots(request: Request) -> JSONResponse:
     total = len(rows)
     start = (page - 1) * per_page
     window = rows[start:start + per_page]
+
+    # `state == "rendering"` is a catalogue fact; having telemetry is a different one. The
+    # catalogue marks ~100 passes as rendering while `active()` caps emitted series at 60,
+    # so an "investigate" link offered on state alone could land on a shot with no data.
+    # This says which rows the farm is genuinely reporting on, so the UI can offer the link
+    # only where it leads somewhere.
+    live_ids = {s_.shot for s_ in active()}
+
+    def row(r):
+        d = r.as_dict()
+        d["live"] = r.shot in live_ids
+        return d
+
     return JSONResponse({
-        "shots": [r.as_dict() for r in window],
+        "shots": [row(r) for r in window],
         "page": page, "per_page": per_page, "total": total,
         "pages": max(1, (total + per_page - 1) // per_page),
         "summary": summary(),
@@ -745,10 +771,26 @@ async def api_shots(request: Request) -> JSONResponse:
     })
 
 
+@app.get("/api/shot/{shot}")
+async def api_shot(shot: str) -> JSONResponse:
+    """Production context for one shot, live or not.
+
+    The switcher changes the subject without a page load, and a shot that is not on the farm
+    has no row in /api/fleet to carry its hierarchy. Without this the breadcrumb would go
+    blank exactly when someone deep-links a catalogue shot, which is the case the page most
+    needs to explain rather than the case it can ignore.
+    """
+    from second_unit.shots_catalog import hierarchy
+    h = hierarchy(shot)
+    if not h:
+        return JSONResponse({"error": f"no such shot: {shot}"}, status_code=404)
+    return JSONResponse(dict(h, shot=shot.strip().upper()))
+
+
 @app.get("/api/shots/facets")
 async def api_shot_facets() -> JSONResponse:
     """Filter options, counted: so the UI never offers a filter that matches nothing."""
-    from second_unit.shots_catalog import catalog, summary
+    from second_unit.shots_catalog import catalog, summary, units_summary
     rows = catalog()
 
     def count(attr):
@@ -760,6 +802,8 @@ async def api_shot_facets() -> JSONResponse:
     return JSONResponse({
         "department": count("department"), "state": count("state"),
         "sequence": count("sequence"), "priority": count("priority"),
+        "title": count("title"), "unit": count("unit"),
+        "units": units_summary(),
         "summary": summary(),
     })
 

@@ -312,6 +312,32 @@ table.slate tbody tr:last-child td{border-bottom:none}
 table.slate tbody tr:hover{background:var(--panel2)}
 td.c-shot{font-family:var(--mono); font-weight:700; color:var(--ink)}
 td.c-seq,td.c-frames,td.c-ing,td.c-due{font-family:var(--mono); color:var(--ink2)}
+/* The deliverable, said the way a supervisor says it. Kept for every persona, including the
+   producer, because the episode is the thing being delivered: it is the one cell on the row
+   a producer would read first, unlike sequence, which is hidden from them. */
+/* The deliverable board. Buttons, not divs with click handlers: each one narrows the table,
+   which is a control, so it must be reachable and announced as one. */
+.units{display:grid; gap:.5rem; grid-template-columns:repeat(auto-fill,minmax(215px,1fr))}
+.ucard{
+  text-align:left; font:inherit; cursor:pointer; background:var(--panel);
+  border:1px solid var(--line); border-left:3px solid var(--line2); border-radius:10px;
+  padding:.6rem .7rem; display:flex; flex-direction:column; gap:.3rem;
+}
+.ucard:hover{border-color:var(--line2); background:var(--panel2)}
+.ucard:focus-visible{outline:2px solid var(--cyan); outline-offset:2px}
+.ucard[aria-pressed="true"]{border-left-color:var(--amber); background:var(--panel2)}
+.ucard[data-jeopardy="1"]{border-left-color:var(--amber)}
+.ucard .uh{display:flex; align-items:baseline; gap:.4rem; justify-content:space-between}
+.ucard .un{font-weight:600; font-size:.92rem}
+.ucard .uk{font-size:.66rem; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3)}
+.ucard .um{font-family:var(--mono); font-size:.74rem; color:var(--ink2)}
+.ucard .uw{font-size:.74rem; color:var(--ink3)}
+.ucard .uw b{color:var(--amber); font-weight:600}
+td.c-unit{white-space:nowrap}
+td.c-unit .ttl{color:var(--ink2)}
+td.c-unit .unit{font-family:var(--mono); font-size:.78rem; color:var(--ink);
+  background:var(--panel2); border:1px solid var(--line); border-radius:5px;
+  padding:.02rem .3rem; margin-left:.25rem}
 th.c-frames,td.c-frames{text-align:right}
 td.c-dept{color:var(--ink2); text-transform:uppercase; letter-spacing:.06em; font-size:.74rem}
 td.c-due .rel{color:var(--ink3); font-size:.72rem; margin-left:.35rem}
@@ -450,14 +476,14 @@ html[data-persona="producer"] .personaNote{display:block}
           fell back to a made-up time. ETAs and slips are still arithmetic, but they are
           measured against a commitment nobody published. Treat nothing on this page as a
           delivery answer until the series is readable again.</div>
-        <div class="r" id="placeholderReason">, </div>
+        <div class="r" id="placeholderReason">–</div>
       </div>
     </div>
     <div class="card dlcard">
       <div>
         <span class="k">Review deadline</span>
-        <div class="big" id="dlTime">, </div>
-        <div class="dim mono" id="dlRel" style="font-size:.72rem">, </div>
+        <div class="big" id="dlTime">–</div>
+        <div class="dim mono" id="dlRel" style="font-size:.72rem">–</div>
       </div>
       <p class="why">Read from farm telemetry, not configured here:
         <code class="promql">shot_review_deadline_seconds{shot="SH042"}</code><span
@@ -524,7 +550,7 @@ html[data-persona="producer"] .personaNote{display:block}
       <div class="st st-error">
         <div class="errbox">
           <div class="t">✗ Triage unavailable</div>
-          <div class="m" id="shotsErrMsg">, </div>
+          <div class="m" id="shotsErrMsg">–</div>
           <div class="h">No rows are shown because the sweep did not complete. Nothing here is
             stale data presented as current: the last successful figures are discarded rather
             than left on screen looking live.</div>
@@ -585,6 +611,25 @@ html[data-persona="producer"] .personaNote{display:block}
     </div>
   </section>
 
+  <!-- ----------------------------------------------------- DELIVERABLE BOARD
+       A shot is not the deliverable. A client review is booked against an episode of a
+       series or a reel of a feature, so this is the level at which "does it land" is
+       actually asked. Each row narrows the table below it, which is the point: the board
+       is a way into the slate, not another thing to read past.
+
+       The date shown is DERIVED, not published: an episode cannot deliver until its last
+       pass does, so it is the latest due date among its outstanding shots. Labelled as
+       derived, because a date the product computed and a date the production committed to
+       are different kinds of fact and only one of them can be missed. -->
+  <section class="sect" id="unitSect">
+    <h2>By deliverable</h2>
+    <p class="sub">Two titles share this farm: a series and a feature. Their passes compete
+      for the same nodes, which is what makes triage a real question. Pick one to narrow
+      the slate below.</p>
+    <div class="units" id="unitBoard" aria-live="polite"></div>
+    <p class="dbfail" id="unitFail" hidden></p>
+  </section>
+
   <section class="sect" id="slateSect">
     <h2>Studio slate · production tracker</h2>
     <p class="dim" style="font-size:.8rem;margin:-.2rem 0 .6rem">
@@ -595,9 +640,17 @@ html[data-persona="producer"] .personaNote{display:block}
     <div class="card">
       <div class="slatebar">
         <div class="fgroup wide">
-          <label for="fq">Search shot or sequence</label>
-          <input id="fq" type="search" placeholder="SH1042 or SQ030" autocomplete="off"
+          <label for="fq">Search shot, sequence or episode</label>
+          <input id="fq" type="search" placeholder="SH1042, SQ030 or S01E04" autocomplete="off"
                  spellcheck="false">
+        </div>
+        <div class="fgroup">
+          <label for="ftitle">Title</label>
+          <select id="ftitle"><option value="">All titles</option></select>
+        </div>
+        <div class="fgroup">
+          <label for="funit">Episode / reel</label>
+          <select id="funit"><option value="">All episodes</option></select>
         </div>
         <div class="fgroup">
           <label for="fdept">Department</label>
@@ -640,6 +693,7 @@ html[data-persona="producer"] .personaNote{display:block}
             <thead>
               <tr>
                 <th scope="col" class="c-shot">Shot</th>
+                <th scope="col" class="c-unit">Title / episode</th>
                 <th scope="col" class="c-seq">Sequence</th>
                 <th scope="col" class="c-dept">Department</th>
                 <th scope="col" class="c-prio">Priority</th>
@@ -659,7 +713,7 @@ html[data-persona="producer"] .personaNote{display:block}
           <button class="btn pbtn" id="pNext" type="button">Next ›</button>
           <button class="btn pbtn" id="pLast" type="button">Last »</button>
           <span class="grow"></span>
-          <span class="shown" id="pShown">, </span>
+          <span class="shown" id="pShown">–</span>
           <span class="busypill" id="pBusy">loading…</span>
           <span class="pp"><label for="fpp">rows</label>
             <select id="fpp">
@@ -682,7 +736,7 @@ html[data-persona="producer"] .personaNote{display:block}
       <div class="st st-empty">
         <div class="emptybox">
           <strong style="color:var(--ink2)" id="emptyTitle">No shots match these filters.</strong>
-          <p style="margin:.4rem 0 0">The slate itself is not empty, <b id="emptyTotal">, </b>
+          <p style="margin:.4rem 0 0">The slate itself is not empty, <b id="emptyTotal">–</b>
             shots exist. These filters are what removed them:</p>
           <ul id="emptyList" style="margin:.4rem 0 .2rem 1.1rem; padding:0"></ul>
           <div style="margin-top:.6rem; display:flex; gap:.5rem; flex-wrap:wrap">
@@ -695,7 +749,7 @@ html[data-persona="producer"] .personaNote{display:block}
       <div class="st st-error">
         <div class="errbox">
           <div class="t">✗ Slate unavailable</div>
-          <div class="m" id="slateErrMsg">, </div>
+          <div class="m" id="slateErrMsg">–</div>
           <div class="h">No rows are shown because the request failed. The previous page of
             results is discarded rather than left on screen where it would read as current, 
             and the filters you set are still in the URL, so a reload resumes exactly here.</div>
@@ -937,7 +991,7 @@ const FARM = (() => {
     }
 
     const slip = (s.slip_hours === null || s.slip_hours === undefined)
-      ? `<span class="v none">, </span>`
+      ? `<span class="v none">–</span>`
       : s.slip_hours > 0
         ? `<span class="v late">+${fmtDur(s.slip_hours)} late</span>`
         : `<span class="v spare">${fmtDur(s.slip_hours)} spare</span>`;
@@ -964,7 +1018,7 @@ const FARM = (() => {
           <div><span class="k">forecast eta</span>
             <span class="v${etaMs ? "" : " none"}">${etaMs ? fmtTime(etaMs) : "none"}</span></div>
           <div><span class="k">review deadline</span>
-            <span class="v">${Number.isFinite(dlMs) ? fmtTime(dlMs): ", "}</span></div>
+            <span class="v">${Number.isFinite(dlMs) ? fmtTime(dlMs): "–"}</span></div>
           <div><span class="k">slip</span>${slip}</div>
         </div>
         ${s.note ? `<p class="snote">${esc(s.note)}</p>` : ""}
@@ -1016,7 +1070,7 @@ const FARM = (() => {
       $("fWorst").textContent = fmtDur(Math.max(...slips));
       $("fWorstLabel").textContent = "spare on the tightest pass, nothing is late";
     } else {
-      $("fWorst").textContent = ", ";
+      $("fWorst").textContent = "–";
       $("fWorstLabel").textContent = "no forecast exists, so no slip does either";
     }
 
@@ -1172,13 +1226,18 @@ const SLATE = (() => {
      matches against shot id and sequence. */
   const FILTERS = [
     {key:"q",          el:"fq",     label:"search",     facet:null},
+    /* Title and episode lead: they are the coarsest cut and the one a supervisor thinks in.
+       "Is Northwind S01E04 going to deliver" comes before any question about a department. */
+    {key:"title",      el:"ftitle", label:"title",      facet:"title"},
+    {key:"unit",       el:"funit",  label:"episode",    facet:"unit"},
     {key:"department", el:"fdept",  label:"department", facet:"department"},
     {key:"state",      el:"fstate", label:"state",      facet:"state"},
     {key:"sequence",   el:"fseq",   label:"sequence",   facet:"sequence"},
     {key:"priority",   el:"fprio",  label:"priority",   facet:"priority"},
   ];
   const DEFAULTS = {page:1, per_page:25, sort:"newest",
-                    q:"", department:"", state:"", sequence:"", priority:""};
+                    q:"", title:"", unit:"", department:"", state:"", sequence:"",
+                    priority:""};
 
   const S = Object.assign({}, DEFAULTS);
   const zone = $("slateZone");
@@ -1228,11 +1287,12 @@ const SLATE = (() => {
 
   /* --------------------------------------------------------------- controls -> state */
   function syncControls() {
-    $("fq").value = S.q;
-    $("fdept").value = S.department;
-    $("fstate").value = S.state;
-    $("fseq").value = S.sequence;
-    $("fprio").value = S.priority;
+    /* Driven off FILTERS, like qs() and the reconcile loop below. This half used to be
+       hand-listed, which made adding a filter a two-step change where forgetting the second
+       step deleted the filter rather than breaking visibly: the control kept its empty
+       value, and the reconcile loop then copied that emptiness back over the state. Adding
+       "title" and "unit" reproduced exactly that. One list now. */
+    for (const f of FILTERS) $(f.el).value = S[f.key] || "";
     $("fsort").value = S.sort;
     $("fpp").value = String(S.per_page);
     /* Reconcile only once the options actually exist. Doing this before the facets land
@@ -1261,6 +1321,54 @@ const SLATE = (() => {
       `<button class="linkbtn" type="button" data-clear="__all">Clear all</button>`;
   }
 
+  /* -------------------------------------------------------- deliverable board */
+  /* One card per episode or reel. Each is a control that narrows the table, so it reports
+     its own state with aria-pressed and can be reached from the keyboard. The counts that
+     matter are the outstanding ones: 95 shots in an episode is inventory, 4 due inside
+     three days is the thing a supervisor acts on today. */
+  function renderUnits(units) {
+    const board = $("unitBoard"), fail = $("unitFail");
+    if (!units.length) {
+      board.innerHTML = "";
+      fail.hidden = false;
+      fail.textContent = "No deliverables came back from /api/shots/facets · units, so this " +
+        "board is empty. The slate table below is unaffected.";
+      return;
+    }
+    fail.hidden = true;
+    board.innerHTML = units.map((u) => {
+      const jeopardy = (u.overdue > 0 || u.due_soon > 0) ? "1" : "0";
+      const bits = [];
+      if (u.overdue) bits.push(`<b>${num(u.overdue)} overdue</b>`);
+      if (u.due_soon) bits.push(`<b>${num(u.due_soon)}</b> due in 3 days`);
+      if (!bits.length) bits.push("nothing due soon");
+      return `<button type="button" class="ucard" data-unit="${esc(u.unit)}"
+                data-title="${esc(u.title)}" data-jeopardy="${jeopardy}"
+                aria-pressed="${S.unit === u.unit ? "true" : "false"}">
+        <span class="uh"><span class="un">${esc(u.title)} ${esc(u.unit)}</span>
+          <span class="uk">${esc(u.kind)}</span></span>
+        <span class="um">${num(u.outstanding)} of ${num(u.shots)} outstanding</span>
+        <span class="uw">${bits.join(" · ")}</span>
+        <span class="uw">next due ${esc(u.next_due || "nothing outstanding")}</span>
+      </button>`;
+    }).join("");
+    board.querySelectorAll(".ucard").forEach((b) => {
+      b.addEventListener("click", () => {
+        /* Clicking the selected card clears it, so the board is a toggle rather than a trap
+           with no way back to the whole slate. */
+        const same = S.unit === b.dataset.unit;
+        S.unit = same ? "" : b.dataset.unit;
+        S.title = same ? "" : b.dataset.title;
+        S.page = 1;
+        syncControls();
+        board.querySelectorAll(".ucard").forEach((c) =>
+          c.setAttribute("aria-pressed", c.dataset.unit === S.unit ? "true" : "false"));
+        load();
+        document.getElementById("slateSect").scrollIntoView({block:"start", behavior:"smooth"});
+      });
+    });
+  }
+
   /* ------------------------------------------------------------------- facets */
   async function loadFacets() {
     try {
@@ -1286,6 +1394,7 @@ const SLATE = (() => {
         el.innerHTML = all + opts;
       }
       renderDeptBar(data.department || {});
+      renderUnits(data.units || []);
       facetsReady = true;
       syncControls();
     } catch (err) {
@@ -1360,10 +1469,12 @@ const SLATE = (() => {
     const rel = relDays(s.due_on);
     const soon = /^(today|tomorrow|in [12]d)$/.test(rel) && s.state !== "complete";
     return `<tr>
-      <td class="c-shot">${esc(s.shot)}${s.state === "rendering"
+      <td class="c-shot">${esc(s.shot)}${s.live
         ? ` <a class="investigate" href="/investigation?shot=${encodeURIComponent(s.shot)}"
              title="Investigate ${esc(s.shot)}">investigate →</a>`
         : ""}</td>
+      <td class="c-unit"><span class="ttl">${esc(s.title || "")}</span>${
+        s.unit ? ` <span class="unit">${esc(s.unit)}</span>` : ""}</td>
       <td class="c-seq">${esc(s.sequence)}</td>
       <td class="c-dept">${esc(s.department)}</td>
       <td class="c-prio"><span class="pchip" data-v="${esc(s.priority)}">${esc(s.priority)}</span></td>

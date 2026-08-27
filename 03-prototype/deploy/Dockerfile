@@ -19,7 +19,19 @@
 FROM golang:1-bookworm AS mcp
 ENV GOTOOLCHAIN=auto
 ARG MCP_GRAFANA_VERSION=v1.2.0
-RUN go install github.com/grafana/mcp-grafana/cmd/mcp-grafana@${MCP_GRAFANA_VERSION} \
+# Retried, because this step reaches out to proxy.golang.org and sum.golang.org for a few
+# hundred modules and a single truncated stream fails the whole build. It has already cost
+# one deploy: "verifying module: ... stream error: INTERNAL_ERROR; received from peer" on
+# a dozen modules at once, which is the proxy having a bad minute, not a broken pin.
+# Retrying is the right response to that. Note what is NOT done here: GOSUMDB is left on
+# and GOFLAGS untouched, so checksum verification still happens on every attempt. Turning
+# it off would make this step pass reliably by no longer checking what it downloaded.
+RUN for attempt in 1 2 3 4; do \
+      echo "go install attempt ${attempt}"; \
+      go install github.com/grafana/mcp-grafana/cmd/mcp-grafana@${MCP_GRAFANA_VERSION} && break; \
+      if [ "${attempt}" = "4" ]; then echo "go install failed after 4 attempts"; exit 1; fi; \
+      sleep $((attempt * 10)); \
+    done \
  && test -x /go/bin/mcp-grafana \
  && echo "built mcp-grafana ${MCP_GRAFANA_VERSION}"
 
