@@ -1080,20 +1080,32 @@ const FARM = (() => {
     dlEl.textContent = "review " + (Number.isFinite(dlMs) ? fmtTime(dlMs) : "");
     endEl.textContent = fmtTime(t1);
 
-    /* Keep the deadline label inside the axis instead of hanging off an edge, then hide
-       whichever decorative label it would otherwise sit on top of. Measured, because the
-       label's width depends on the font and the rendered time string. */
-    dlEl.style.transform = dlPct <= 8 ? "translateX(0)"
-                         : dlPct >= 92 ? "translateX(-100%)" : "translateX(-50%)";
+    /* A deadline earlier than now is off the left end of the axis, not at its origin.
+       Clamping it to 0% drew it exactly on top of "now", which both collided and implied
+       the review is happening this minute when it may be hours gone. So say so. */
+    const dlPast = Number.isFinite(dlMs) && dlMs < t0;
+    if (dlPast) dlEl.textContent += " · passed";
+
+    /* Nudge the label clear of its neighbours rather than hiding one of them. All three
+       carry information: the axis origin, the deadline, and where the window ends. Widths
+       depend on the font and the rendered strings, so this is measured, not guessed. The
+       label can end up a few px off its tick; the dashed amber line on each row marks the
+       deadline exactly, and the caption says so. */
     endEl.style.visibility = nowEl.style.visibility = "visible";
+    dlEl.style.transform = "none";
     requestAnimationFrame(() => {
-      const a = dlEl.getBoundingClientRect();
-      const hits = (el) => {
-        const r = el.getBoundingClientRect();
-        return r.width > 0 && !(r.right + 6 < a.left || r.left - 6 > a.right);
-      };
-      if (hits(endEl)) endEl.style.visibility = "hidden";
-      if (hits(nowEl)) nowEl.style.visibility = "hidden";
+      const axW = $("axis").clientWidth;
+      const nowW = nowEl.offsetWidth, endW = endEl.offsetWidth, dlW = dlEl.offsetWidth;
+      const GAP = 8;
+      let x = (dlPct / 100) * axW - dlW / 2;          // centred on its tick
+      x = Math.max(x, nowW + GAP);                     // clear of "now"
+      x = Math.min(x, axW - endW - GAP - dlW);         // clear of the window end
+      if (x < nowW + GAP) {
+        /* Too narrow for all three. The window end is the least informative, so it goes. */
+        endEl.style.visibility = "hidden";
+        x = Math.min(nowW + GAP, Math.max(0, axW - dlW));
+      }
+      dlEl.style.left = Math.max(0, Math.min(x, axW - dlW)) + "px";
     });
 
     rowsEl.innerHTML = shots.map((s) => row(s, t0, t1)).join("");

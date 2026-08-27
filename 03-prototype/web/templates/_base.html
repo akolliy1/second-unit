@@ -233,6 +233,13 @@ main{grid-area:main; padding:clamp(.9rem,2.5vw,1.6rem); min-width:0}
   background:none; border:none; color:var(--ink3); padding:.6rem .85rem .7rem;
   white-space:nowrap; display:inline-flex; align-items:center; gap:.45rem;
 }
+/* The first tab's label is the leftmost thing in the panel, so it sets the eye's idea of
+   where the column starts. Its own left padding pushed it ~14px right of the content
+   beneath it, which reads as a misaligned header rather than as breathing room. Padding is
+   dropped on the first tab only, and its underline follows, so label and content share one
+   left edge. Every other tab keeps its padding: the gap between tabs is doing real work. */
+.tabs button:first-child{padding-left:0}
+.tabs button:first-child[aria-selected="true"]::after{left:0}
 .tabs button:hover{color:var(--ink2)}
 .tabs button[aria-selected="true"]{color:var(--ink)}
 .tabs button[aria-selected="true"]::after{
