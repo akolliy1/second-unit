@@ -1,8 +1,8 @@
-"""Grafana Agent Observability — the agent watches itself.
+"""Grafana Agent Observability: the agent watches itself.
 
 This is the second, distinct use of the partner's product: Grafana is both the agent's tool
 surface (via MCP) and the backend its own telemetry lands in. That gives the demo its best
-shot — a Grafana dashboard of the agent that is diagnosing a Grafana dashboard — and it
+shot, a Grafana dashboard of the agent that is diagnosing a Grafana dashboard, and it
 answers "what did that investigation cost" with a number instead of a shrug.
 
 Metrics emitted, per run, to the same Prometheus the farm writes to:
@@ -126,7 +126,7 @@ class RunObserver:
                 print(f"   observability: pushed {len(self.series)} series "
                       f"for run {self.run_id}")
             return True
-        except Exception as exc:  # noqa: BLE001 — telemetry must never break the run
+        except Exception as exc:  # noqa: BLE001, telemetry must never break the run
             if verbose:
                 print(f"   observability: push failed ({type(exc).__name__}), continuing")
             return False

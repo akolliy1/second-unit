@@ -6,7 +6,7 @@ an agent per shot would triple the cost of every run to tell us that two of thre
 fine.
 
 So the sweep is deterministic: one Prometheus query per series, arithmetic in Python, every
-shot every time. The agent is then spent where it earns its keep — the deep investigation of
+shot every time. The agent is then spent where it earns its keep, the deep investigation of
 the shot that is actually slipping. That is also how an ops team works: cheap check across
 everything, expensive attention on the exception.
 
@@ -27,8 +27,8 @@ CRITICAL_HOURS = 1.0       # more than an hour late -> critical
 #: Rates above this are not physically possible on this farm, so they are not reported.
 #:
 #: The farm is 12 nodes; the fastest department manages about 16 frames a minute each, so
-#: ~190/min is the absolute ceiling and real numbers sit near 10. A counter reset — which
-#: happens whenever the seeder restarts — makes rate() return values in the hundreds, and
+#: ~190/min is the absolute ceiling and real numbers sit near 10. A counter reset, which
+#: happens whenever the seeder restarts, makes rate() return values in the hundreds, and
 #: the console rendered 986 fr/min as a healthy pass and then declared every shot clear of
 #: its deadline. `forecast_delivery` already refuses this class of input; the sweep that
 #: feeds the whole console did not, which is the wrong way round.
@@ -101,7 +101,7 @@ def fleet_status(deadline_iso: str, *, window: str = "15m") -> List[ShotStatus]:
         # Slow passes need a wider window.
         #
         # A slate shot renders over days, so it completes about four frames in fifteen
-        # minutes — and `rate()` over that window rounds to zero. The console then said
+        # minutes, and `rate()` over that window rounds to zero. The console then said
         # "no completions in window", which is the vocabulary for a STALLED pass. Reporting
         # a healthy slow pass as stalled is a false alarm, and false alarms are how an
         # operator learns to ignore a screen. Anything the short window cannot see is
@@ -122,7 +122,7 @@ def fleet_status(deadline_iso: str, *, window: str = "15m") -> List[ShotStatus]:
         return []
 
     if not remaining:
-        last_error = ("shot_frames_remaining returned no series — the seeder may not be "
+        last_error = ("shot_frames_remaining returned no series, the seeder may not be "
                       "running, or the metric name has changed")
         return []
 
@@ -133,7 +133,7 @@ def fleet_status(deadline_iso: str, *, window: str = "15m") -> List[ShotStatus]:
     # Each shot against ITS OWN deadline.
     #
     # The first version measured every pass against a single deadline handed in by the
-    # caller — the incident pass's review, hours away. Slate passes are due in days, so
+    # caller, the incident pass's review, hours away. Slate passes are due in days, so
     # fifteen of them were reported CRITICAL for the crime of rendering at their normal
     # speed. A deadline belongs to a shot, so it is read per shot, and the argument is only
     # a fallback for anything that has not published one.
@@ -144,7 +144,7 @@ def fleet_status(deadline_iso: str, *, window: str = "15m") -> List[ShotStatus]:
             if sh:
                 deadline_by_shot[sh] = datetime.fromtimestamp(
                     float(row["value"][1]), timezone.utc)
-    except Exception:  # noqa: BLE001 — fall back to the single deadline
+    except Exception:  # noqa: BLE001, fall back to the single deadline
         pass
     now = datetime.now(timezone.utc)
     try:
@@ -175,14 +175,14 @@ def fleet_status(deadline_iso: str, *, window: str = "15m") -> List[ShotStatus]:
                 shot, dept, left, round(rate, 2), None,
                 deadline_by_shot.get(shot, deadline).isoformat(timespec="minutes"),
                 None, "unknown",
-                f"{rate:.0f} frames/min is not possible on this farm — a counter reset in "
+                f"{rate:.0f} frames/min is not possible on this farm, a counter reset in "
                 f"the rate window. No forecast made."))
             continue
         if rate <= 0:
             out.append(ShotStatus(shot, dept, left, 0.0, None,
                 deadline_by_shot.get(shot, deadline).isoformat(timespec="minutes"),
                 None, "unknown",
-                "no completions in the last %s — stalled or no data" % window))
+                "no completions in the last %s, stalled or no data" % window))
             continue
 
         hours = left / rate / 60.0

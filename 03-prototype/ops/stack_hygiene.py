@@ -73,7 +73,7 @@ def main():
     anns, rules, _ = inventory(base, s)
 
     if not (args.prune_annotations or args.prune_alert_rules):
-        print("\n(inventory only — pass --prune-annotations / --prune-alert-rules to change "
+        print("\n(inventory only, pass --prune-annotations / --prune-alert-rules to change "
               "anything)")
         return
 

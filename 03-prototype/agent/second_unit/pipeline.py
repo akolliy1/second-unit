@@ -5,7 +5,7 @@ handoff payloads, the arithmetic and (later) write authority all live in Python,
 "deterministic, multi-step" has to be a property of the code, not a hope about the prompt.
 
 Every run produces a RunRecord: the typed output of each stage plus the full tool-call
-ledger. That record is what the UI renders and what makes the agent's work auditable —
+ledger. That record is what the UI renders and what makes the agent's work auditable, 
 if a claim is not traceable to a tool call in here, it does not get shown.
 """
 import asyncio
@@ -25,7 +25,7 @@ USER = "crew"
 async def _write_dashboard_via_mcp(proposed, *, verbose: bool = True):
     """Compose the incident dashboard in Python and write it through the MCP bridge.
 
-    Still an MCP write — same server, same credentials, same audit trail — just without
+    Still an MCP write, same server, same credentials, same audit trail, just without
     asking a model to act as a JSON courier.
     """
     import os
@@ -142,7 +142,7 @@ class Approval:
 
     Deliberately not a boolean: we record WHO approved WHAT and WHEN, because the whole
     governance claim rests on the write-back being attributable. An empty `approved`
-    list is a valid decision — it means the operator said no.
+    list is a valid decision: it means the operator said no.
     """
 
     approved_by: str
@@ -177,7 +177,7 @@ async def execute_approved_writes(plan, approval: Optional[Approval], *, verbose
         )
     if not approval.approved:
         if verbose:
-            print("   operator approved nothing — no writes performed")
+            print("   operator approved nothing, no writes performed")
         return StageResult(stage="remediation_executor", output=[], raw_text="[]")
 
     chosen = [plan.proposed_writes[i] for i in approval.approved
@@ -189,7 +189,7 @@ async def execute_approved_writes(plan, approval: Optional[Approval], *, verbose
     try:
         from .verify import stack_targets
         targets = stack_targets()
-    except Exception:  # noqa: BLE001 — a lookup failure must not block the write-back
+    except Exception:  # noqa: BLE001, a lookup failure must not block the write-back
         targets = {}
 
     dash_lines = "\n".join(
@@ -197,12 +197,12 @@ async def execute_approved_writes(plan, approval: Optional[Approval], *, verbose
         for d in targets.get("dashboards", [])
     ) or "    (none)"
     target_block = (
-        "\n\nCONCRETE TARGETS — use these exact identifiers, do not invent any:\n"
+        "\n\nCONCRETE TARGETS, use these exact identifiers, do not invent any:\n"
         f"  folder_uid for alert rules: {targets.get('folder_uid')}"
         f"  (title: {targets.get('folder_title')})\n"
         f"  existing Second Unit dashboards:\n{dash_lines}\n"
         "  For a farm-wide incident, create a GLOBAL annotation: omit dashboardUid\n"
-        "  entirely. A global annotation is valid and is what we want here — do not fail\n"
+        "  entirely. A global annotation is valid and is what we want here, do not fail\n"
         "  the write because no dashboard was named.\n"
         "  To change a dashboard, fetch it with get_dashboard_by_uid FIRST, then pass the\n"
         "  modified object to update_dashboard. Never post a dashboard you have not read.\n"
@@ -220,12 +220,12 @@ async def execute_approved_writes(plan, approval: Optional[Approval], *, verbose
     for n, w in enumerate(chosen, 1):
         # DASHBOARDS ARE WRITTEN BY CODE, over the same MCP connection.
         #
-        # `update_dashboard` accepts our generated JSON perfectly — verified directly. What
+        # `update_dashboard` accepts our generated JSON perfectly, verified directly. What
         # failed, eight times in one run, was the model carrying that JSON: it must copy a
         # five-panel document out of one tool's output and into the next tool's argument,
         # and a large structured payload round-tripping through a language model does not
         # survive. The model still decides WHETHER to create a dashboard and what it is
-        # about; the document and the call are ours. Same division as everywhere else here —
+        # about; the document and the call are ours. Same division as everywhere else here, 
         # the model decides what it finds, code decides what happens.
         if "dashboard" in (w.action or "").lower():
             r = await _write_dashboard_via_mcp(w, verbose=verbose)
@@ -238,7 +238,7 @@ async def execute_approved_writes(plan, approval: Optional[Approval], *, verbose
             f"details={w.details}\nrationale={w.rationale}\n"
             + target_block
             + "\nReturn a single WriteResult in a one-element list. In `detail` put ONLY "
-              "the created object's id, uid or URL — no code, no tool syntax, no prose "
+              "the created object's id, uid or URL, no code, no tool syntax, no prose "
               "about what you might do next. If it failed, put the error message."
         )
         if verbose:
@@ -406,7 +406,7 @@ async def stream_stage(agent, task: str, schema, *, verbose: bool = True,
     try:
         from google.adk.agents.run_config import RunConfig
         run_kwargs["run_config"] = RunConfig(max_llm_calls=budget * 2 + 6)
-    except Exception:  # noqa: BLE001 — older/newer ADK may move or rename this
+    except Exception:  # noqa: BLE001, older/newer ADK may move or rename this
         pass
 
     try:
@@ -452,7 +452,7 @@ async def stream_stage(agent, task: str, schema, *, verbose: bool = True,
                 if verbose:
                     print(f"    !! {result.error}")
                 break
-    except Exception as exc:  # noqa: BLE001 — a stage failure is data, not a crash
+    except Exception as exc:  # noqa: BLE001, a stage failure is data, not a crash
         result.error = f"{type(exc).__name__}: {exc}"
 
     result.seconds = time.time() - started

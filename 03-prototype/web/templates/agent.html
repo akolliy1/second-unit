@@ -1,21 +1,21 @@
 {% extends "_base.html" %}
 {#
-  /agent — the agent, observed.
+  /agent: the agent, observed.
 
   This page answers "do I trust the thing that told me?", and it is built so that it cannot
   flatter the agent: every number is read back out of Prometheus through
   GET /api/agent/metrics, from the same series a Grafana dashboard would read. Nothing here
   is held in the web process's memory, so the page and the stack cannot disagree.
 
-  Structure — deliberate, and the reason this page is not one long scroll:
+  Structure, deliberate, and the reason this page is not one long scroll:
 
     PINNED (above the tabs, on every view)
       1. the plain-language verdict, for whoever did not come here to read latency bars
-      2. write-claim verification — the four outcomes of the agent's self-report, checked
+      2. write-claim verification, the four outcomes of the agent's self-report, checked
          out of band. This is the page's whole argument. It does not go behind a tab, and
          when false_success > 0 it is forced visible for every persona.
 
-    TABBED (the analytics — four different questions, not four sections of one)
+    TABBED (the analytics, four different questions, not four sections of one)
       cost · latency · failures · grafana
 
   Cost, latency and failures are accounting. They are worth reading, and they are not the
@@ -33,7 +33,7 @@
 /* Persona translation on this page too. It was missing, and this is the page a producer is
    least equipped to read raw: token counts and tool latencies mean nothing to someone whose
    question is "can I act on what this thing told me?". So the same data gets a plain-language
-   verdict for them, and the machinery is hidden by default rather than removed — the numbers
+   verdict for them, and the machinery is hidden by default rather than removed, the numbers
    are still one click away, and the TD still lands on them directly. */
 .plain{display:none; margin:0 0 1.1rem}
 html[data-persona="producer"] .plain,
@@ -194,8 +194,8 @@ html[data-agentalarm="1"] #claimSection{display:block}
         Counted by <code class="mono">second_unit_write_claims_total{outcome}</code>, written by
         <code class="mono">observe.py</code> after every approved write-back. The check itself is
         <code class="mono">verify.py</code>: a before/after diff of the Grafana stack over its
-        HTTP API — <code class="mono">/api/search</code>, <code class="mono">/api/annotations</code>,
-        <code class="mono">/api/v1/provisioning/alert-rules</code> — deliberately <em>not</em> the
+        HTTP API, <code class="mono">/api/search</code>, <code class="mono">/api/annotations</code>,
+        <code class="mono">/api/v1/provisioning/alert-rules</code>, deliberately <em>not</em> the
         MCP tools the agent just used. The model decides what to do; code decides what is true.
         Last value reported inside the <span class="winlabel">query</span> window.
       </p>
@@ -205,13 +205,13 @@ html[data-agentalarm="1"] #claimSection{display:block}
 
     <div class="st st-empty">
       <div class="emptybox">
-        <strong>No verification samples in the query window — this is not "zero false successes".</strong>
+        <strong>No verification samples in the query window, this is not "zero false successes".</strong>
         <p style="margin:.4rem 0 0"><code>/api/agent/metrics</code> asks Prometheus for the last
           value each series reported inside a <span class="winlabel">bounded</span> window
           (<code>last_over_time</code>). These series are written once per investigation, not
           scraped continuously, so if no run pushed its telemetry inside that window every series
           here reads empty. Empty means <b>unobserved</b>. Reporting it as a clean sheet would be
-          exactly the laundering this panel exists to prevent — run an investigation, or read the
+          exactly the laundering this panel exists to prevent, run an investigation, or read the
           series over a longer range in Grafana (the <b>Grafana</b> tab below).</p>
       </div>
     </div>
@@ -219,7 +219,7 @@ html[data-agentalarm="1"] #claimSection{display:block}
     <div class="st st-error">
       <div class="errbox">
         <div class="t">✗ Could not read the agent's own metrics</div>
-        <div class="m" id="claimErrMsg">—</div>
+        <div class="m" id="claimErrMsg">, </div>
         <div class="h">No verification result is shown, because none was read. The agent may have
           run perfectly; this page simply does not know, and says so rather than guessing.</div>
       </div>
@@ -229,7 +229,7 @@ html[data-agentalarm="1"] #claimSection{display:block}
 
 <hr class="pinfoot">
 
-<!-- ══════════════════════════════════════════════════════ TABS — the analytics.
+<!-- ══════════════════════════════════════════════════════ TABS: the analytics.
      Four different questions about the same run. The shared primitive in _base.html owns
      ARIA, arrow keys, the single tab stop, [hidden] panels and the ?tab= round trip. -->
 <div class="machinery" id="agentTabs">
@@ -258,15 +258,15 @@ html[data-agentalarm="1"] #claimSection{display:block}
         </div>
         <div class="st st-loading"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
         <div class="st st-empty">
-          <div class="emptybox"><strong>No stage samples in the query window — unobserved, not zero.</strong>
+          <div class="emptybox"><strong>No stage samples in the query window, unobserved, not zero.</strong>
             <p style="margin:.35rem 0 0">Same cause as the headline above: these series are written
               once per run, and the query only looks back
               <span class="winlabel">a bounded window</span>.
-              <code>second_unit_run_seconds</code> exists in the stack — it is just older than that.
+              <code>second_unit_run_seconds</code> exists in the stack: it is just older than that.
               Nothing is inferred in its absence.</p></div>
         </div>
         <div class="st st-error"><div class="errbox"><div class="t">✗ Metrics unavailable</div>
-          <div class="m" id="costErrMsg">—</div></div></div>
+          <div class="m" id="costErrMsg">, </div></div></div>
       </div>
     </div>
   </section>
@@ -279,20 +279,20 @@ html[data-agentalarm="1"] #claimSection{display:block}
         <div class="st st-ready">
           <div class="rows" id="latRows"></div>
           <p class="dim" style="font-size:.78rem;margin:.7rem 0 0">
-            <code class="mono">second_unit_tool_latency_ms{stage,tool}</code> — one MCP round trip,
+            <code class="mono">second_unit_tool_latency_ms{stage,tool}</code>, one MCP round trip,
             measured in the agent around the call. This is the bridge plus Grafana plus the
             datasource, not the model.
           </p>
         </div>
         <div class="st st-loading"><div class="skel"></div><div class="skel"></div></div>
         <div class="st st-empty">
-          <div class="emptybox"><strong>No tool-latency samples in the query window — unobserved, not zero.</strong>
+          <div class="emptybox"><strong>No tool-latency samples in the query window, unobserved, not zero.</strong>
             <p style="margin:.35rem 0 0">Either no run reported inside the last
-              <span class="winlabel">window</span>, or the stages that ran made no MCP calls — the
+              <span class="winlabel">window</span>, or the stages that ran made no MCP calls, the
               remediation planner has no tools at all, by construction.</p></div>
         </div>
         <div class="st st-error"><div class="errbox"><div class="t">✗ Metrics unavailable</div>
-          <div class="m" id="latErrMsg">—</div></div></div>
+          <div class="m" id="latErrMsg">, </div></div></div>
       </div>
     </div>
   </section>
@@ -309,13 +309,13 @@ html[data-agentalarm="1"] #claimSection{display:block}
             <div class="t">✓ No failures recorded</div>
             <div class="d">No sample of <code class="mono">second_unit_stage_failures_total</code> in
               the <span class="winlabel">query</span> window. Every stage that ran, ran to a
-              schema-valid result. Reasons are bucketed to four values — <b>quota</b>,
-              <b>budget</b>, <b>unparseable</b>, <b>no_response</b> — because unbounded label values
+              schema-valid result. Reasons are bucketed to four values, <b>quota</b>,
+              <b>budget</b>, <b>unparseable</b>, <b>no_response</b>, because unbounded label values
               are the one way adding observability can harm the host stack.</div>
           </div>
         </div>
         <div class="st st-error"><div class="errbox"><div class="t">✗ Metrics unavailable</div>
-          <div class="m" id="failErrMsg">—</div></div></div>
+          <div class="m" id="failErrMsg">, </div></div></div>
       </div>
     </div>
   </section>
@@ -332,7 +332,7 @@ html[data-agentalarm="1"] #claimSection{display:block}
         semantic conventions, and those spans for these runs are exported to
         <b>Grafana Cloud AI Observability</b> in the same stack under service name
         <code class="mono">second-unit</code> (the web process traces separately as
-        <code class="mono">second-unit-web</code>) — open the AI Observability app and filter by that
+        <code class="mono">second-unit-web</code>), open the AI Observability app and filter by that
         service.
       </p>
       <a class="glink" id="gLink" href="#" rel="noreferrer noopener" target="_blank">↗ open the stack</a>
@@ -349,13 +349,13 @@ html[data-agentalarm="1"] #claimSection{display:block}
   Prometheus through Grafana's datasource proxy. Nothing is served from the web process's memory,
   so this page cannot flatter the agent. One fetch feeds the pinned headline and all four tabs, so
   they cannot disagree; switching tabs re-reads nothing. Each series is the last value a run
-  reported inside a <span class="winlabel">bounded</span> window — these are the numbers of the
+  reported inside a <span class="winlabel">bounded</span> window, these are the numbers of the
   most recent investigation, not of this minute. Refreshed every 20&nbsp;s.
 </p>
 {% endblock %}
 
 {% block docs %}
-<h3>Agent — observed</h3>
+<h3>Agent, observed</h3>
 <p>Our own agent's telemetry, read back from the stack it writes to. The page is here to make
 the agent falsifiable: it reports what an investigation cost, what failed, and whether the
 writes it claimed actually happened.</p>
@@ -363,15 +363,15 @@ writes it claimed actually happened.</p>
 <h4>What is pinned, and why</h4>
 <p>Two things sit above the tabs and are never hidden by a tab choice:</p>
 <ul>
-  <li>the <b>plain-language verdict</b> — the same payload, translated for a reader whose question
+  <li>the <b>plain-language verdict</b>, the same payload, translated for a reader whose question
     is "can I act on this?" rather than "what did it cost?" (shown to supervisor and producer);</li>
-  <li>the <b>write-claim verification</b> headline — <code>confirmed</code>,
+  <li>the <b>write-claim verification</b> headline, <code>confirmed</code>,
     <code>honest_failure</code>, <code>unchecked</code>, <code>false_success</code>.</li>
 </ul>
 <p>The tabs hold cost, latency, failures and the Grafana link-out. That split is the argument of
 the page: everything in a tab is accounting, and the pinned block is the only part that says
 whether the agent's self-report was true. A <code>false_success</code> above zero is forced
-visible for every persona — it is not something a view setting gets to suppress.</p>
+visible for every persona, it is not something a view setting gets to suppress.</p>
 
 <h4>The self-report is a claim</h4>
 <p>An agent that says "annotation created" has produced a sentence, not a result. In a real run
@@ -381,8 +381,8 @@ report you would have concluded three writes landed. One did. That run is why
 
 <h4>Verification is out of band</h4>
 <ul>
-  <li><code>verify.py</code> snapshots the stack <em>before</em> the write-back — dashboard UIDs,
-    annotation ids, alert-rule UIDs — then diffs it after.</li>
+  <li><code>verify.py</code> snapshots the stack <em>before</em> the write-back, dashboard UIDs,
+    annotation ids, alert-rule UIDs, then diffs it after.</li>
   <li>It reads Grafana's own HTTP API (<code>/api/search</code>, <code>/api/annotations</code>,
     <code>/api/v1/provisioning/alert-rules</code>), <b>not</b> the MCP tools the agent used. A
     verifier that asks the same tool that just lied learns nothing.</li>
@@ -393,30 +393,30 @@ report you would have concluded three writes landed. One did. That run is why
 
 <h4>The four outcomes</h4>
 <ul>
-  <li><code>confirmed</code> — claimed success, new object found.</li>
-  <li><code>honest_failure</code> — reported failure, and nothing appeared. The agent was right
+  <li><code>confirmed</code>, claimed success, new object found.</li>
+  <li><code>honest_failure</code>, reported failure, and nothing appeared. The agent was right
     about the world; trust is intact.</li>
-  <li><code>unchecked</code> — an action type with no independent check implemented. Counted, not
+  <li><code>unchecked</code>, an action type with no independent check implemented. Counted, not
     credited.</li>
-  <li><code>false_success</code> — claimed success, nothing found. The one number worth paging on.
+  <li><code>false_success</code>: claimed success, nothing found. The one number worth paging on.
     It is drawn hatched red and given the top of the page whenever it is above zero.</li>
 </ul>
 
 <h4>Where each number comes from</h4>
-<p>All of it from one request — <code>GET /api/agent/metrics</code> — read back out of Prometheus,
+<p>All of it from one request, <code>GET /api/agent/metrics</code>, read back out of Prometheus,
 never held in the web process's memory. Per tab:</p>
 <ul>
-  <li><b>pinned headline</b> — <code>second_unit_write_claims_total{outcome}</code>.</li>
-  <li><b>Cost</b> — <code>second_unit_run_seconds{stage}</code> for wall clock (plus a
+  <li><b>pinned headline</b>, <code>second_unit_write_claims_total{outcome}</code>.</li>
+  <li><b>Cost</b>, <code>second_unit_run_seconds{stage}</code> for wall clock (plus a
     <code>stage="total"</code> series for the run, shown in the legend rather than as a row),
     <code>second_unit_tool_calls_total{stage}</code> for MCP calls, and
     <code>second_unit_tokens_total{stage,kind}</code> for <code>prompt</code> and
     <code>candidate</code> tokens.</li>
-  <li><b>Latency</b> — <code>second_unit_tool_latency_ms{stage,tool}</code>, per-call round trip
+  <li><b>Latency</b>, <code>second_unit_tool_latency_ms{stage,tool}</code>, per-call round trip
     measured around the call in the agent, slowest first.</li>
-  <li><b>Failures</b> — <code>second_unit_stage_failures_total{stage,reason}</code>, bucketed to
+  <li><b>Failures</b>, <code>second_unit_stage_failures_total{stage,reason}</code>, bucketed to
     four reasons so the label cardinality stays bounded.</li>
-  <li><b>Grafana</b> — <code>GRAFANA_URL</code> from the server, stack root only.</li>
+  <li><b>Grafana</b>, <code>GRAFANA_URL</code> from the server, stack root only.</li>
 </ul>
 <p>The count pill on each tab is computed from that same payload: stages observed, tool round trips
 measured, failures recorded. A pill reading <code>–</code> means the series was absent, not zero.</p>
@@ -431,15 +431,15 @@ bug in this page, not a favourable reading.</p>
 <div class="dnote">These series are written once per investigation, so the endpoint asks for
 <code>last_over_time</code> over a window (<code>window</code> in the response, named in every tab
 note) rather than an instant value. A run older than that window leaves every panel empty. Empty is
-rendered as <em>unobserved</em>, never as zero — particularly for <code>false_success</code>, where
+rendered as <em>unobserved</em>, never as zero, particularly for <code>false_success</code>, where
 "no data" and "none" are opposite claims.</div>
 
 <h4>Cost, and why two model tiers</h4>
 <p>Tool-using stages spend most of their tokens on telemetry pulled into context rather than on
-generated text — the prompt:candidate ratio in the Cost tab is the evidence. Retrieval work that is
+generated text, the prompt:candidate ratio in the Cost tab is the evidence. Retrieval work that is
 mostly "fetch and summarise" runs on the cheaper Flash model
-(<code>GEMINI_MODEL</code>); the two stages whose output people plan around — the diagnosis and
-the impact forecast — get the stronger model (<code>GEMINI_MODEL_STRONG</code>). The tier shown
+(<code>GEMINI_MODEL</code>); the two stages whose output people plan around, the diagnosis and
+the impact forecast, get the stronger model (<code>GEMINI_MODEL_STRONG</code>). The tier shown
 per row is the default in <code>stages.py</code>; the diagnostician accepts an override because
 the strong model is also the first to hit a quota, and a degraded-but-answering diagnosis beats a
 429.</p>
@@ -447,13 +447,13 @@ the strong model is also the first to hit a quota, and a degraded-but-answering 
 
 {% block scripts %}
 <script>
-/* /agent — read the agent's own series and render them with divs.
+/* /agent: read the agent's own series and render them with divs.
    No charting library: strict CSP, no external requests, no build step. Bars are one div
    with a width, which is all a bar has ever been.
    IIFE so nothing collides with the shell's globals ($, esc, fresh, initTabs).
 
    ONE fetch feeds everything: the pinned plain-language verdict, the pinned write-claim
-   headline, and all four tab panels. It used to be two fetches — the plain view had its own —
+   headline, and all four tab panels. It used to be two fetches, the plain view had its own, 
    which is one round trip too many and, worse, two readings of the same question that could
    disagree. Switching tabs re-reads nothing; the poll timer is the only refetch. */
 (() => {
@@ -474,13 +474,13 @@ the strong model is also the first to hit a quota, and a degraded-but-answering 
   const STAGE_ORDER = Object.keys(STAGE_META);
 
   const OUTCOMES = [
-    ["false_success", "claimed success — nothing found in the stack. The agent was wrong about the world."],
-    ["confirmed",     "claimed success — a new object of that kind really appeared."],
+    ["false_success", "claimed success, nothing found in the stack. The agent was wrong about the world."],
+    ["confirmed",     "claimed success, a new object of that kind really appeared."],
     ["honest_failure","reported the write failed, and it had. Trust intact."],
     ["unchecked",     "no independent check exists for that action type. Counted, not credited."],
   ];
   const REASON_TEXT = {
-    quota:       "the model API returned RESOURCE_EXHAUSTED / 429 — the stronger model runs out first",
+    quota:       "the model API returned RESOURCE_EXHAUSTED / 429, the stronger model runs out first",
     budget:      "the stage exceeded its own budget and was stopped rather than allowed to run on",
     unparseable: "the stage produced output that failed schema validation, so nothing downstream ran",
     no_response: "the stage finished without a final response",
@@ -514,15 +514,15 @@ the strong model is also the first to hit a quota, and a degraded-but-answering 
   const NOTES = {
     cost: (w) => `Per-stage wall clock (<code class="mono">second_unit_run_seconds</code>), MCP calls
       (<code class="mono">second_unit_tool_calls_total</code>) and tokens by stage and kind
-      (<code class="mono">second_unit_tokens_total</code>) — ${w}, so these are the most recent
+      (<code class="mono">second_unit_tokens_total</code>), ${w}, so these are the most recent
       run's numbers, not a live average.`,
     latency: (w) => `<code class="mono">second_unit_tool_latency_ms{stage,tool}</code>, one row per
-      stage and tool, slowest first — ${w}.`,
-    failures: (w) => `<code class="mono">second_unit_stage_failures_total{stage,reason}</code> —
+      stage and tool, slowest first, ${w}.`,
+    failures: (w) => `<code class="mono">second_unit_stage_failures_total{stage,reason}</code>, 
       ${w}. Nothing recorded is the good outcome, and it is reported as "none recorded",
       never as a blank panel.`,
     grafana: () => `Where to read these same series yourself, in the stack the agent both queries
-      and reports into. Stack root only — no deep link this page cannot verify.`,
+      and reports into. Stack root only, no deep link this page cannot verify.`,
   };
   const winPhrase = () =>
     WINDOW ? `last value reported inside a ${esc(WINDOW)} window` : "read back from Prometheus";
@@ -546,7 +546,7 @@ the strong model is also the first to hit a quota, and a degraded-but-answering 
 
   /* ------------------------------------------------------------------ plain
      Deliberately blunt: the interesting answer here is either "yes, and here is how we
-     know" or "no — it claimed writes that were not there". Same payload as the machinery,
+     know" or "no, it claimed writes that were not there". Same payload as the machinery,
      so the two can never disagree. */
   function say(verdict, detail) {
     const v = $("plainVerdict"), d = $("plainDetail");
@@ -567,14 +567,14 @@ the strong model is also the first to hit a quota, and a degraded-but-answering 
       return;
     }
     if (fs > 0) {
-      say("Not entirely — " + fs + " of its write claims did not hold up.",
+      say("Not entirely, " + fs + " of its write claims did not hold up.",
           "The agent reported " + fs + " change" + (fs > 1 ? "s" : "") + " to Grafana that " +
           "an independent check could not find. " + ok + " did hold up and " + hf +
           " were honest failures it reported correctly. This is exactly why nothing is " +
           "written without your approval, and why every write is checked afterwards " +
           "through a different channel than the one the agent used.");
     } else {
-      say("Yes — every write it claimed was verified.",
+      say("Yes, every write it claimed was verified.",
           ok + " claimed change" + (ok === 1 ? "" : "s") + " confirmed in the stack, " + hf +
           " failure" + (hf === 1 ? "" : "s") + " it reported honestly, and no claim that " +
           "could not be found. Across the run it made " + calls + " calls to Grafana.");
@@ -601,8 +601,8 @@ the strong model is also the first to hit a quota, and a degraded-but-answering 
            <div class="body">
              <div class="t">${fs === 1 ? "One write was" : fs + " writes were"} reported as successful
                and ${fs === 1 ? "is" : "are"} not in the stack</div>
-             <p class="d">The agent said the write landed. An independent check — a before/after diff
-               of Grafana over its HTTP API, not the MCP tools the agent used — found no new object
+             <p class="d">The agent said the write landed. An independent check, a before/after diff
+               of Grafana over its HTTP API, not the MCP tools the agent used, found no new object
                to credit it to. Read the rest of that run's report as a claim: it was accurate about
                what it intended and wrong about what happened. Nothing downstream that assumes the
                write exists can be trusted.</p>
@@ -676,13 +676,13 @@ the strong model is also the first to hit a quota, and a degraded-but-answering 
             <em>${esc(meta.role)}${meta.tier ? ` <span class="tier" data-t="${meta.tier}">${meta.tier}</span>` : ""}</em>
           </div>
           <div class="bar"><span style="width:${sw}%"></span></div>
-          <div class="val${slowest ? " hot" : ""}">${sec.has(s) ? secs(sec.get(s)) : "—"}</div>
+          <div class="val${slowest ? " hot": ""}">${sec.has(s) ? secs(sec.get(s)): ", "}</div>
           <div class="nm dim" style="font-size:.68rem">${calls.has(s) ? num(calls.get(s)) + " tool calls" : "no tool calls"}</div>
           <div class="bar two">
             <span class="p" style="width:${pw}%"></span>
             <span class="c" style="left:${pw}%;width:${cw}%"></span>
           </div>
-          <div class="val">${tot ? num(tot) + " tok" : "—"}</div>
+          <div class="val">${tot ? num(tot) + " tok": ", "}</div>
         </div>`;
     }).join("");
 
@@ -691,7 +691,7 @@ the strong model is also the first to hit a quota, and a degraded-but-answering 
 
     /* The cheaper-model argument, computed rather than asserted: if prompt tokens dwarf
        generated tokens on the tool-using stages, their cost is reading telemetry, not
-       thinking about it — and reading is what a cheap model is for. */
+       thinking about it, and reading is what a cheap model is for. */
     const toolStages = stages.filter((s) => (calls.get(s) || 0) > 0);
     const sum = (m2, ks) => ks.reduce((a, k) => a + (m2.get(k) || 0), 0);
     const pTool = sum(prompt, toolStages), cTool = sum(cand, toolStages);
@@ -706,7 +706,7 @@ the strong model is also the first to hit a quota, and a degraded-but-answering 
     for (const s of stages) if ((sec.get(s) || 0) > dearSec) { dear = s; dearSec = sec.get(s) || 0; }
 
     $("costWhy").innerHTML = toolStages.length
-      ? `<b>${esc(dear)} is the most expensive stage</b> — ${secs(dearSec)} of wall clock,
+      ? `<b>${esc(dear)} is the most expensive stage</b>, ${secs(dearSec)} of wall clock,
          ${num(prompt.get(dear) || 0)} prompt tokens and ${num(calls.get(dear) || 0)} tool calls.
          Across the run the tool-using stages (${toolStages.map(esc).join(", ")}) make
          ${shareCalls}% of the MCP calls and carry ${shareTok}% of the prompt
@@ -714,10 +714,10 @@ the strong model is also the first to hit a quota, and a degraded-but-answering 
          the point: their cost is telemetry arriving in the context window, not reasoning about it,
          and a cheaper model reads a Prometheus response as well as an expensive one. So the
          retrieval-shaped work runs on Flash and the stronger model is spent only where the output
-         is short and people plan around it — the diagnosis and the impact forecast. The tier on
+         is short and people plan around it, the diagnosis and the impact forecast. The tier on
          each row is that stage's default in <code class="mono">stages.py</code>.`
       : `<b>Why two model tiers.</b> No tool calls were recorded in this window, so the retrieval
-         share cannot be computed from these samples — the claim is not asserted without them.`;
+         share cannot be computed from these samples, the claim is not asserted without them.`;
 
     setState("costZone", "ready");
     if (tabs) tabs.count("cost", stages.length);
@@ -747,7 +747,7 @@ the strong model is also the first to hit a quota, and a degraded-but-answering 
 
   /* -------------------------------------------------------------- failures
      `observed` says whether this run was seen at all. Without it a stack with no run in the
-     window would get a confident "0 failures" pill next to a panel saying "unobserved" — the
+     window would get a confident "0 failures" pill next to a panel saying "unobserved", the
      same conflation the headline exists to prevent. */
   function renderFailures(rows, observed) {
     const items = (rows || []).filter((r) => (Number(r.value) || 0) > 0);
@@ -819,7 +819,7 @@ the strong model is also the first to hit a quota, and a degraded-but-answering 
     const fs = renderClaims(data.write_claims);
     renderCost(data.stage_seconds, data.tool_calls, data.tokens);
     renderLatency(data.tool_latency_ms);
-    /* "Did we see this run at all?" — any stage or claim series is evidence of a run. */
+    /* "Did we see this run at all?", any stage or claim series is evidence of a run. */
     const observed = (data.stage_seconds || []).length > 0 ||
                      (data.tool_calls || []).length > 0 ||
                      (data.write_claims || []).length > 0;

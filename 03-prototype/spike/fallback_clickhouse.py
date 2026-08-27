@@ -1,7 +1,7 @@
 """INSURANCE ONLY. Do not run this unless Rung 1 and Rung 2 both failed.
 
 The ClickHouse track's official MCP server authenticates with plain host/user/password
-— no OAuth — so this is the fastest pivot if Grafana auth defeats you. Sign up for the
+, no OAuth, so this is the fastest pivot if Grafana auth defeats you. Sign up for the
 30-day ClickHouse Cloud trial, fill in the CLICKHOUSE_* vars in .env, run this, and if
 it prints tables you have a viable track by Sunday morning.
 
@@ -17,8 +17,8 @@ separate terminal:
   CLICKHOUSE_MCP_AUTH_DISABLED=true \
     ./.venv/bin/mcp-clickhouse
 
-Verify those transport env var names against the repo README before trusting them —
-https://github.com/ClickHouse/mcp-clickhouse — they were not confirmed first-hand.
+Verify those transport env var names against the repo README before trusting them, 
+https://github.com/ClickHouse/mcp-clickhouse, they were not confirmed first-hand.
 `AUTH_DISABLED` is safe here only because we bind to localhost.
 """
 import asyncio
@@ -43,7 +43,7 @@ async def main():
             res = await asyncio.wait_for(session.call_tool("list_databases", {}), timeout=60)
             for block in res.content:
                 print("  " + (getattr(block, "text", "") or "")[:800])
-            print("\nFALLBACK GREEN — ClickHouse track is viable. Re-scope the concept.")
+            print("\nFALLBACK GREEN: ClickHouse track is viable. Re-scope the concept.")
 
 
 if __name__ == "__main__":

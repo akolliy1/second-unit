@@ -1,4 +1,4 @@
-"""Second Unit — the one page a judge clicks.
+"""Second Unit: the one page a judge clicks.
 
 Design constraints that shape every decision in this file:
 
@@ -10,7 +10,7 @@ Design constraints that shape every decision in this file:
 * The page renders *events*, not a finished report. The agent pipeline emits events as it
   runs, so the transport is Server-Sent Events and the client is a switch on `event.type`.
 
-Right now the events come from `fixture.json` — a real recorded run. Swapping in the live
+Right now the events come from `fixture.json`, a real recorded run. Swapping in the live
 pipeline means replacing `_iter_events()` with the ADK runner's event stream; the wire
 format and the client stay exactly as they are. That is why the fixture's field names are
 copied verbatim from `second_unit/schemas.py` rather than reshaped for the UI.
@@ -41,7 +41,7 @@ from fastapi.templating import Jinja2Templates
 # silently disabled Text-to-Speech (403, missing quota project) and the tracing
 # exporter. Then it loaded too LATE: GRAFANA_URL is captured into a module constant a
 # few lines below, so it was always empty and every evidence deeplink on the
-# investigation page rendered as 'deeplink unavailable' — on the one surface whose job
+# investigation page rendered as 'deeplink unavailable', on the one surface whose job
 # is to let a judge verify our claims against the live stack. Import order is not a
 # style question here.
 try:
@@ -76,8 +76,8 @@ MAX_RUNS = 32
 app = FastAPI(title="Second Unit", docs_url=None, redoc_url=None)
 templates = Jinja2Templates(directory=str(HERE / "templates"))
 # `{% extends %}` on a child template's first line renders to an empty line, so every
-# response began with a newline before <!doctype html>. Browsers tolerate it — we measured
-# CSS1Compat — but it is one stray character away from quirks mode, and quirks mode is a
+# response began with a newline before <!doctype html>. Browsers tolerate it, we measured
+# CSS1Compat, but it is one stray character away from quirks mode, and quirks mode is a
 # whole class of layout bugs nobody should be debugging on submission day.
 templates.env.trim_blocks = True
 templates.env.lstrip_blocks = True
@@ -143,7 +143,7 @@ def _remember(run: Run) -> None:
 def _get_run(run_id: str) -> Run:
     run = RUNS.get(run_id)
     if run is None:
-        # Most likely cause: the server restarted mid-demo. Say so, rather than 500ing —
+        # Most likely cause: the server restarted mid-demo. Say so, rather than 500ing, 
         # the client turns this into "run expired, press Run investigation again".
         raise HTTPException(status_code=404, detail="unknown or expired run id")
     return run
@@ -162,7 +162,7 @@ def _sse(payload: Dict[str, Any]) -> str:
 
 
 async def _iter_live(run: Run, request: Request) -> AsyncIterator[str]:
-    """Stream the real pipeline. Same wire format, same client, no replay pacing —
+    """Stream the real pipeline. Same wire format, same client, no replay pacing, 
     the pauses a judge sees here are the agent actually thinking."""
     try:
         from live import iter_live_events
@@ -182,7 +182,7 @@ async def _iter_live(run: Run, request: Request) -> AsyncIterator[str]:
         # the next stage's first tool call there is a 30-60s silence while the model
         # thinks, and Cloud Run's front end drops a connection that has sent no bytes.
         # The stream then ends cleanly with no error event, which looks exactly like the
-        # agent dying halfway through — the worst possible thing for a judge to see.
+        # agent dying halfway through: the worst possible thing for a judge to see.
         #
         # Wrapping __anext__ in wait_for lets us emit an SSE comment during the gaps
         # without touching the pipeline itself.
@@ -192,7 +192,7 @@ async def _iter_live(run: Run, request: Request) -> AsyncIterator[str]:
             # Heartbeat WITHOUT cancelling the pipeline.
             #
             # The first version did `await asyncio.wait_for(events.__anext__(), timeout=10)`.
-            # On timeout, wait_for CANCELS the coroutine it was waiting on — which here is
+            # On timeout, wait_for CANCELS the coroutine it was waiting on, which here is
             # the generator step currently running an agent. So every heartbeat killed the
             # stage in flight and left the generator dead: the stream ended cleanly after
             # Watchtower with no error, and the "fix" for truncation became a better cause
@@ -314,9 +314,41 @@ async def _iter_events(run: Run, request: Request) -> AsyncIterator[str]:
 # --------------------------------------------------------------------------- routes
 
 
+#: Shots that existed when the console had three of them.
+#:
+#: This whitelist was hardcoded in three places, and then the slate arrived with 750 more.
+#: Asking about SH1718 silently became a question about SH042, the ask feature answered
+#: confidently about the wrong shot, and only its own caveat ("the provided context
+#: exclusively concerned SH042") revealed it. A validator must ask what exists, not recite
+#: what used to.
+_INCIDENT_SHOTS = ("SH041", "SH042", "SH043")
+
+
+def valid_shot(candidate: Optional[str], default: str = "SH042") -> str:
+    """Normalise a requested shot, accepting anything that actually exists.
+
+    Order matters: the incident passes are checked first because they are cheap and are the
+    common case, then the generated catalogue. A slate id that is real but not currently
+    rendering is still accepted, the page it lands on explains that there is nothing live
+    to investigate, which is more useful than silently substituting a different shot.
+    """
+    if not candidate:
+        return default
+    shot = candidate.strip().upper()
+    if shot in _INCIDENT_SHOTS:
+        return shot
+    try:
+        from second_unit.shots_catalog import catalog
+        if any(s.shot == shot for s in catalog()):
+            return shot
+    except Exception:  # noqa: BLE001, fall through to the default
+        pass
+    return default
+
+
 def _chrome(request: Request, page_id: str, title: str, sub: str) -> dict:
     """Context every page needs. Centralised so the rail, persona chip and drawer cannot
-    drift between pages — the most common way a multi-page prototype starts feeling cheap."""
+    drift between pages: the most common way a multi-page prototype starts feeling cheap."""
     asked = request.query_params.get("persona")
     return {
         "page_id": page_id,
@@ -328,6 +360,16 @@ def _chrome(request: Request, page_id: str, title: str, sub: str) -> dict:
 
 
 @app.get("/", response_class=HTMLResponse)
+async def landing(request: Request) -> HTMLResponse:
+    """The marketing page. `/` is what a judge clicks first, and an operator console with
+    no explanation is the wrong first ten seconds, so the console moved to /overview and
+    this page says what the product is before showing what it does. It carries no chrome
+    context: its numbers are fetched client-side from the same public APIs the console
+    uses, so there is nothing to server-render and nothing to keep in sync."""
+    return templates.TemplateResponse(request=request, name="landing.html", context={})
+
+
+@app.get("/overview", response_class=HTMLResponse)
 async def overview(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request=request, name="overview.html",
@@ -376,9 +418,7 @@ async def investigation(request: Request) -> HTMLResponse:
                       "Five stages, live tool calls, and an approval gate before anything is written"),
             # The subject of this page. The recorded run is SH042; if a judge deep-links a
             # different shot we say so rather than silently showing the wrong pass.
-            "subject_shot": ((request.query_params.get("shot") or "SH042").upper()
-                             if (request.query_params.get("shot") or "SH042").upper()
-                             in ("SH041", "SH042", "SH043") else "SH042"),
+            "subject_shot": valid_shot(request.query_params.get("shot")),
             "recorded_shot": "SH042",
             "scenario": fixture.get("scenario", {}),
             "verdict": verdict,
@@ -437,7 +477,7 @@ async def start_run(request: Request) -> JSONResponse:
         try:
             body = await request.json()
             inject = str(body.get("inject", "")) if isinstance(body, dict) else ""
-        except Exception:  # noqa: BLE001 — an absent or non-JSON body is the normal case
+        except Exception:  # noqa: BLE001, an absent or non-JSON body is the normal case
             inject = ""
 
     # ?live=1 (or SECOND_UNIT_LIVE=1 in the environment) runs the REAL pipeline instead
@@ -449,12 +489,10 @@ async def start_run(request: Request) -> JSONResponse:
     )
     run = Run(id=uuid.uuid4().hex[:12], inject=inject)
     run.live = want_live and not inject
-    asked_shot = (request.query_params.get("shot") or "").upper()
-    if asked_shot in ("SH041", "SH042", "SH043"):
-        run.shot = asked_shot
+    run.shot = valid_shot(request.query_params.get("shot"), default=run.shot)
 
     # The page hydrates from the recorded run on load, without streaming. That run really
-    # did happen, so its write-back proposal is genuinely approvable — this registers it
+    # did happen, so its write-back proposal is genuinely approvable, this registers it
     # server-side so the approval gate works before anyone presses "Run investigation".
     if request.query_params.get("mode") == "recorded":
         run.status = "complete"
@@ -496,7 +534,7 @@ async def stream_run(run_id: str, request: Request) -> StreamingResponse:
 async def approve(run_id: str, request: Request) -> JSONResponse:
     """The governance beat: nothing is written until a human flips this.
 
-    The write itself is stubbed — this records the approval and echoes back what *would*
+    The write itself is stubbed, this records the approval and echoes back what *would*
     be written, with the Grafana scope each item needs. The real effect belongs behind the
     service-account token, and that token's permissions are the actual security boundary
     (§2 of the scope doc), so faking a write here would be theatre.
@@ -526,7 +564,7 @@ async def approve(run_id: str, request: Request) -> JSONResponse:
     if run.status not in ("complete", "streaming"):
         raise HTTPException(
             status_code=409,
-            detail="nothing to approve yet — run the investigation first",
+            detail="nothing to approve yet, run the investigation first",
         )
     if not items:
         raise HTTPException(status_code=422, detail="select at least one item to write")
@@ -536,7 +574,7 @@ async def approve(run_id: str, request: Request) -> JSONResponse:
         return JSONResponse({
             "run_id": run.id, "approved": True, "already_approved": True,
             "approved_at": run.approved_at, "items": _echo(run.approved_items),
-            "message": "Already approved — no second write was issued.",
+            "message": "Already approved, no second write was issued.",
         })
 
     run.approved = True
@@ -571,7 +609,7 @@ async def briefing_audio(run_id: str) -> Response:
     """Synthesize the dailies briefing for a run, and cache it on the run.
 
     Synthesis is a second or two, so it happens on demand rather than during the
-    investigation — a judge who never presses play should not wait for audio they did not
+    investigation, a judge who never presses play should not wait for audio they did not
     ask for, and a TTS outage must not be able to fail a run.
     """
     run = RUNS.get(run_id)
@@ -602,7 +640,7 @@ async def briefing_audio(run_id: str) -> Response:
 # --------------------------------------------------------------------------- data APIs
 #
 # These exist so the console's pages can be built and tested independently of the agent.
-# Every one is CHEAP and DETERMINISTIC — Prometheus queries and arithmetic, no model calls —
+# Every one is CHEAP and DETERMINISTIC, Prometheus queries and arithmetic, no model calls, 
 # because a dashboard that costs an LLM invocation to render is a dashboard nobody refreshes.
 
 
@@ -646,7 +684,7 @@ async def api_shots(request: Request) -> JSONResponse:
 
     Served from the generated catalogue rather than Prometheus. The catalogue is hundreds of
     shots and grows daily; asking Prometheus for all of them would put a multi-second query
-    behind every page of a table. Live telemetry stays where it belongs — /api/fleet — for
+    behind every page of a table. Live telemetry stays where it belongs, /api/fleet, for
     the few dozen passes actually rendering.
     """
     from datetime import date as _date
@@ -657,7 +695,7 @@ async def api_shots(request: Request) -> JSONResponse:
     try:
         page = max(1, int(q.get("page", 1)))
         # Honour what the caller asked for. The first version clamped the floor to 10, so
-        # per_page=3 silently returned 10 — the same quiet override this project keeps
+        # per_page=3 silently returned 10, the same quiet override this project keeps
         # objecting to elsewhere. 200 remains a real ceiling because the payload is real.
         per_page = min(200, max(1, int(q.get("per_page", 25))))
     except ValueError:
@@ -665,7 +703,7 @@ async def api_shots(request: Request) -> JSONResponse:
                             status_code=400)
 
     rows = catalog()
-    # Filters. Unknown values are ignored rather than returning nothing — a filter that
+    # Filters. Unknown values are ignored rather than returning nothing, a filter that
     # silently empties the table looks identical to a broken feed.
     dept = (q.get("department") or "").lower()
     state = (q.get("state") or "").lower()
@@ -709,7 +747,7 @@ async def api_shots(request: Request) -> JSONResponse:
 
 @app.get("/api/shots/facets")
 async def api_shot_facets() -> JSONResponse:
-    """Filter options, counted — so the UI never offers a filter that matches nothing."""
+    """Filter options, counted: so the UI never offers a filter that matches nothing."""
     from second_unit.shots_catalog import catalog, summary
     rows = catalog()
 
@@ -768,7 +806,7 @@ async def api_vitals() -> JSONResponse:
 async def api_agent_metrics() -> JSONResponse:
     """What the agent did to itself: our own observability series, read back.
 
-    Read from Prometheus rather than kept in memory on purpose — the numbers a judge sees
+    Read from Prometheus rather than kept in memory on purpose, the numbers a judge sees
     on this page are the same ones in Grafana, from the same source, so the page cannot
     flatter the agent.
     """
@@ -778,11 +816,11 @@ async def api_agent_metrics() -> JSONResponse:
     #:
     #: These series are written ONCE per investigation, not scraped continuously, so a plain
     #: instant query only sees them if a run finished inside Prometheus's ~5-minute lookback.
-    #: Everything then returns empty and the page reads as "the agent has never run" — which
+    #: Everything then returns empty and the page reads as "the agent has never run", which
     #: is a different and much worse claim than "no run recently". `last_over_time` asks the
     #: right question: what did the most recent run report? Same mistake we made with the
     #: farm metrics; see telemetry/README.md.
-    #: 6h was still too tight — the last run aged out of it within an afternoon and the
+    #: 6h was still too tight, the last run aged out of it within an afternoon and the
     #: page went blank again. These series are written once per run, so the window is really
     #: "how long ago will we still tell you about", and for a demo a judge might open a day
     #: later the answer is 24h. The response carries the window so the page can say how old
@@ -825,15 +863,13 @@ async def ask_suggestions() -> JSONResponse:
 async def ask_stream(request: Request) -> StreamingResponse:
     """Answer one scoped question, streaming the work.
 
-    Stateless on purpose — a question is not a run, so there is nothing to register or
+    Stateless on purpose, a question is not a run, so there is nothing to register or
     resume. The router goes first: an out-of-scope question returns in a few seconds with an
     honest reason and never touches a tool, which is the whole reason this is a scoped ask
     box rather than a chat window.
     """
     question = (request.query_params.get("q") or "").strip()[:400]
-    asked_shot = (request.query_params.get("shot") or "SH042").upper()
-    if asked_shot not in ("SH041", "SH042", "SH043"):
-        asked_shot = "SH042"
+    asked_shot = valid_shot(request.query_params.get("shot"))
 
     async def gen():
         if not question:
@@ -922,7 +958,7 @@ async def ask_stream(request: Request) -> StreamingResponse:
 async def reset() -> JSONResponse:
     """Clear this session's runs and report where the scenario actually is.
 
-    This used to claim it reset the incident clock — the docstring said the deployed build
+    This used to claim it reset the incident clock, the docstring said the deployed build
     restarted the seeder and the response said "Incident clock back to t+0". Neither was
     true. The farm is generated by a Cloud Run Job on its own loop and nothing here can
     rewind it, so saying otherwise put a lie in the one product whose entire argument is

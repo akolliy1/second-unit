@@ -9,7 +9,7 @@ the second is the one that matters for judging:
    boundaries are the demonstration: the model decides what goes *in* the fields, code
    decides what happens next.
 
-Kept deliberately shallow — two levels of nesting. Gemini's structured output degrades on
+Kept deliberately shallow, two levels of nesting. Gemini's structured output degrades on
 deeply nested schemas, and a flat shape is also easier to render in the UI.
 """
 from enum import Enum
@@ -30,7 +30,7 @@ class Evidence(BaseModel):
     claim: str = Field(description="One sentence, stated plainly, that this evidence supports.")
     tool: str = Field(description="The MCP tool that produced it, e.g. query_prometheus.")
     query: str = Field(description="The exact PromQL/LogQL sent, or the tool arguments.")
-    observed: str = Field(description="What actually came back — real numbers, real log text.")
+    observed: str = Field(description="What actually came back, real numbers, real log text.")
 
 
 class WatchtowerReport(BaseModel):
@@ -105,7 +105,7 @@ class RemediationPlan(BaseModel):
     summary: str
     proposed_writes: List[ProposedWrite]
     fix_recommendation: str = Field(
-        description="The real-world fix for the crew — not a Grafana change.")
+        description="The real-world fix for the crew: not a Grafana change.")
     risk_if_ignored: str
     # The counterfactual. Advice without a number is an opinion; advice with an ETA is a
     # decision the producer can actually make.
@@ -133,7 +133,7 @@ class AskRoute(BaseModel):
 
     This exists so an out-of-scope question costs ONE fast model call and no MCP traffic.
     Without it, "what's the weather" would spend a minute querying Prometheus before
-    admitting it cannot help — and a judge's lasting impression of the product would be a
+    admitting it cannot help, and a judge's lasting impression of the product would be a
     slow non-answer.
     """
 
@@ -141,7 +141,7 @@ class AskRoute(BaseModel):
         description="True only if this can be answered from THIS render farm's telemetry.")
     reason: str = Field(
         description="One sentence. If out of scope, say plainly what the system can and "
-                    "cannot see — do not apologise and do not speculate.")
+                    "cannot see: do not apologise and do not speculate.")
     suggestion: str = Field(
         default="",
         description="If out of scope, the nearest question that IS answerable here.")
@@ -157,5 +157,5 @@ class AskAnswer(BaseModel):
     evidence: List[Evidence] = Field(default_factory=list)
     caveat: str = Field(
         default="",
-        description="Anything that would make this answer wrong — a short window, a "
+        description="Anything that would make this answer wrong, a short window, a "
                     "missing series, an assumption. Empty if genuinely none.")

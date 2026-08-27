@@ -1,6 +1,6 @@
 {
   "uid": "second-unit-delivery-status",
-  "title": "Delivery Status \u2014 Current Shots",
+  "title": "Delivery Status. Current Shots",
   "description": "Producer's view of the three shots in flight: what is left, how fast it is moving, when it lands, and where frame time is going. Baseline dashboard, hand-built for the Second Unit prototype.",
   "tags": [
     "second-unit",
@@ -743,7 +743,7 @@
       "id": 9,
       "type": "timeseries",
       "title": "Queue depth",
-      "description": "Backlog per department queue \u2014 the producer's early warning before a burndown flattens.",
+      "description": "Backlog per department queue, the producer's early warning before a burndown flattens.",
       "datasource": {
         "type": "prometheus",
         "uid": "grafanacloud-prom"

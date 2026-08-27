@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Deploy Second Unit to Cloud Run. Idempotent: safe to re-run.
 #
-# Reads nothing from .env by design — secrets go to Secret Manager and are injected as
+# Reads nothing from.env by design, secrets go to Secret Manager and are injected as
 # --set-secrets, so the running service never has a token baked into its image and the
 # repo never needs one to deploy.
 set -euo pipefail

@@ -3,7 +3,7 @@
 
   One skeleton, four pages. The rail and top bar are identical everywhere so navigation
   costs no re-learning, and the documentation drawer is part of the frame rather than a
-  per-page afterthought — an operator console is full of terms that need one sentence of
+  per-page afterthought, an operator console is full of terms that need one sentence of
   explanation, and making someone leave the page to get it is hostile.
 
   Pages provide: page_id, page_title, page_sub, the `content` block, the `docs` block, and
@@ -16,8 +16,52 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ page_title }} · Second Unit</title>
-<meta name="description" content="Autonomous post-production pipeline SRE — a crew of agents that reads a render farm's telemetry and answers whether the shot makes its deadline.">
+<meta name="description" content="Autonomous post-production pipeline SRE, a crew of agents that reads a render farm's telemetry and answers whether the shot makes its deadline.">
+<script>
+/* FIRST-RUN GATE. Runs before anything paints.
+ *
+ * Whichever door someone comes through - the landing CTA, a deep link, a bookmark - the
+ * console asks who they are ONCE, then never again. The requirement is not "put a chooser
+ * at /start"; it is "nobody uses this console without a lens, and nobody is asked twice".
+ *
+ * Four rules keep it from becoming a nuisance or a trap:
+ *   1. `?persona=` bypasses it entirely. A deliberate link is an answer, so honouring it
+ *      matters more than the ritual - this is what keeps every shared URL working.
+ *   2. Skipping counts as a decision. Someone who declines to choose is not asked again;
+ *      being nagged is worse than being un-personalised.
+ *   3. The destination is preserved. Choosing sends you where you were going, not to a
+ *      generic home - losing someone's intent to show them a form is hostile.
+ *   4. No JavaScript means no redirect. The console renders as normal. A gate that can
+ *      lock someone out when a script fails is a worse bug than the one it prevents,
+ *      and a judge on a locked-down browser must still see the product.
+ *
+ * Deliberately inline and synchronous: an async check would paint the console first and
+ * then yank it away, which reads as a broken page.
+ */
+(function firstRunGate() {
+  var PATH = location.pathname;
+  if (PATH === "/start" || PATH === "/") return;      // the chooser itself, and the landing
+  try {
+    var qs = new URLSearchParams(location.search);
+    var asked = qs.get("persona");
+    if (asked === "td" || asked === "supervisor" || asked === "producer") return;
+    var chosen = localStorage.getItem("second-unit:persona");
+    var declined = localStorage.getItem("second-unit:persona:declined");
+    if (chosen || declined) return;
+  } catch (e) {
+    return;   /* storage blocked (private window, hardened browser): never gate */
+  }
+  /* Hide the shell for the instant before the browser follows the redirect, so there is no
+     flash of a page the visitor is not going to read. */
+  document.documentElement.setAttribute("data-gating", "1");
+  location.replace("/start?next=" + encodeURIComponent(PATH + location.search));
+})();
+</script>
 <style>
+/* Only ever set by the gate above, and only for the moment before the redirect lands.
+   It is applied by script, never in the served HTML, so a no-JS visitor can never be
+   left staring at a hidden page. */
+html[data-gating="1"] body{visibility:hidden}
 {% include 'partials/_tokens.css' %}
 
 /* ============================================================ app shell
@@ -46,7 +90,10 @@ html[data-docs="1"] .app{ grid-template-columns:236px minmax(0,1fr) 360px;
      no room left to stick inside it. */
   position:sticky; top:0; align-self:start; height:100vh; overflow-y:auto;
 }
-.rbrand{display:flex; flex-direction:column; gap:.1rem; padding:.35rem .5rem 1rem; }
+.rbrand{display:flex; flex-direction:column; gap:.1rem; padding:.35rem .5rem 1rem;
+  color:inherit; text-decoration:none; border-radius:8px}
+.rbrand:hover b{color:var(--amber)}
+.rbrand:focus-visible{outline:2px solid var(--cyan); outline-offset:2px}
 .rbrand b{font-size:1.02rem; letter-spacing:-.02em}
 .rbrand small{color:var(--ink3); font-size:.68rem; letter-spacing:.09em; text-transform:uppercase}
 .rail a{
@@ -121,7 +168,7 @@ main{grid-area:main; padding:clamp(.9rem,2.5vw,1.6rem); min-width:0}
 
 /* =========================================================== responsive
    These live AFTER the component rules on purpose. @media adds no specificity, so a
-   `.rail{display:none}` placed above `.rail{display:flex}` loses — which is exactly what
+   `.rail{display:none}` placed above `.rail{display:flex}` loses, which is exactly what
    happened: on a 390px viewport the rail stayed visible, fell out of its named grid area,
    and squeezed the content column to 215px. Order is the whole fix. */
 @media (max-width:1180px){
@@ -133,7 +180,7 @@ main{grid-area:main; padding:clamp(.9rem,2.5vw,1.6rem); min-width:0}
 }
 @media (max-width:860px){
   /* On a phone the drawer is an OVERLAY SHEET, not a column. Stacking it into the grid put
-     it 1500px down the page — present, and effectively undiscoverable: pressing "Docs"
+     it 1500px down the page, present, and effectively undiscoverable: pressing "Docs"
      appeared to do nothing. A sheet is what every console does here, and for this reason. */
   .app,html[data-docs="1"] .app{
     grid-template-columns:minmax(0,1fr); grid-template-areas:"top" "main";}
@@ -154,7 +201,7 @@ main{grid-area:main; padding:clamp(.9rem,2.5vw,1.6rem); min-width:0}
 
 /* =============================================================== tabs
    One tab primitive, shared by every page.
-   Three pages had grown into single long scrolls holding unrelated things — a delivery
+   Three pages had grown into single long scrolls holding unrelated things, a delivery
    forecast stacked on a 750-row catalogue, four analytics panels stacked under a trust
    verdict. Scroll is the wrong control for "these are different questions": it makes the
    reader do the sorting, hides the second thing entirely on a phone, and gives no way to
@@ -227,9 +274,15 @@ html[data-docs="1"] .docs{display:block}
 <div class="app">
 
   <nav class="rail" aria-label="Sections">
-    <div class="rbrand"><b>SECOND UNIT</b><small>render farm ops</small></div>
+    {# Inside the console, home is the overview. On the profile chooser it is the
+       landing page: a first-time visitor there has no remembered lens, so pointing
+       the wordmark into the console would send them through the gate straight back
+       to this page, which reads as a dead click. #}
+    {% set brand_href = "/" if page_id == "start" else "/overview" %}
+    <a class="rbrand" href="{{ brand_href }}"
+       aria-label="Second Unit, {{ "back to the landing page" if page_id == "start" else "back to overview" }}"><b>SECOND UNIT</b><small>render farm ops</small></a>
     {% set nav = [
-      ('overview','/','◱','Overview'),
+      ('overview','/overview','◱','Overview'),
       ('investigation','/investigation','◎','Investigation'),
       ('shots','/shots','▤','Shots'),
       ('agent','/agent','◈','Agent')

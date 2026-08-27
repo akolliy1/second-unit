@@ -6,7 +6,7 @@ gathers the inputs from Grafana and calls this to get the answer, which means th
 reproducible, auditable, and cannot be a plausible-sounding hallucination.
 
 This is the concrete form of the architecture rule "the model decides what it finds, code
-decides what happens next" — and it is also what makes the forecast defensible to a judge
+decides what happens next", and it is also what makes the forecast defensible to a judge
 who asks where the number came from.
 """
 from datetime import datetime, timedelta, timezone
@@ -35,6 +35,27 @@ def forecast_delivery(
         capacity_loss_pct, and hours_if_healthy. slip_hours is positive when late.
     """
     now = datetime.now(timezone.utc)
+
+    # A rate the farm cannot physically produce is refused outright.
+    #
+    # The inverted-baseline check below catches "current >= baseline". It does NOT catch
+    # both numbers being nonsense: a counter reset produced baseline 1456.8 and current
+    # 1248.7 frames/min on a twelve-node farm, the inversion test passed because 1456 > 1248,
+    # and a confident forecast was built on both. The farm's ceiling is about 190/min.
+    CEILING = 200.0
+    for label, value in (("current", current_rate_frames_per_min),
+                         ("baseline", baseline_rate_frames_per_min)):
+        if value > CEILING:
+            return {
+                "error": "implausible_rate",
+                "detail": (f"{label} rate of {value:.0f} frames/min exceeds anything this "
+                           f"farm can produce (~{CEILING:.0f}/min across twelve nodes). "
+                           f"Almost certainly a counter reset inside the rate window."),
+                "makes_deadline": None,
+                "recommendation": ("Re-measure over a window that excludes the reset. Do not "
+                                   "forecast from this, and do not invent a mechanism to "
+                                   "explain it, no such capacity exists."),
+            }
 
     # Plausibility gate. A counter reset -- which happens whenever the render job restarts,
     # or when a backfill overlaps existing series -- makes rate() return a value with no
@@ -66,7 +87,7 @@ def forecast_delivery(
 
     if current_rate_frames_per_min <= 0:
         return {
-            "error": "current rate is zero or negative — the pass is stalled, not slow",
+            "error": "current rate is zero or negative, the pass is stalled, not slow",
             "makes_deadline": False,
             "frames_remaining": frames_remaining,
             "recommendation": "treat as a stall: nothing completes until the fault clears",
@@ -165,7 +186,7 @@ def forecast_after_remediation(
             "recommendation": (
                 "Measure the healthy rate over a window BEFORE the fault began, or use the "
                 "pre-incident baseline supplied in your context. Do not model a fix against "
-                "the broken farm's own throughput — the result is that removing a dead node "
+                "the broken farm's own throughput, the result is that removing a dead node "
                 "appears to reduce capacity, which is impossible."),
             "makes_deadline": None,
         }
@@ -210,7 +231,7 @@ def build_incident_dashboard(
 
     Why this exists: `update_dashboard` declares NO required fields, so there is no schema to
     follow, and the agent has to invent Grafana's panel/gridPos/targets structure from
-    nothing. It failed on every attempt — four separate runs — while reporting success. The
+    nothing. It failed on every attempt, four separate runs, while reporting success. The
     model should decide WHAT to show; the shape of a Grafana dashboard is not a judgement
     call, it is a spec, and specs belong in code.
 
@@ -244,14 +265,14 @@ def build_incident_dashboard(
         "refresh": "30s",
         "time": {"from": "now-3h", "to": "now"},
         "panels": [
-            panel(1, f"{faulty_node} — GPU ECC errors (the cause)",
+            panel(1, f"{faulty_node}, GPU ECC errors (the cause)",
                   f'increase(render_node_gpu_ecc_errors_total{{node="{faulty_node}"}}[5m])',
                   0, 0),
-            panel(2, f"{faulty_node} — GPU temperature vs peers",
+            panel(2, f"{faulty_node}, GPU temperature vs peers",
                   "render_node_gpu_temp_celsius", 12, 0, unit="celsius"),
             panel(3, f"{department} queue depth",
                   f'render_queue_depth{{queue="{department}"}}', 0, 8),
-            panel(4, f"{shot} — frames remaining vs completion rate",
+            panel(4, f"{shot}, frames remaining vs completion rate",
                   f'shot_frames_remaining{{shot="{shot}"}}', 12, 8),
             panel(5, "Frame failures by node and reason",
                   "sum by (node, reason) (increase(render_frames_failed_total[10m]))",
@@ -264,7 +285,7 @@ def idle_cost(artists_idle: int, slip_hours: float, hourly_rate_usd: float = 85.
     """Convert a schedule slip into the number a producer actually argues about.
 
     Rates vary wildly by studio and region, so this returns the assumption alongside the
-    figure — an unlabelled cost estimate is worse than none.
+    figure: an unlabelled cost estimate is worse than none.
     """
     if slip_hours <= 0:
         return {"cost_usd": 0.0, "note": "no slip, no idle cost"}
@@ -274,5 +295,5 @@ def idle_cost(artists_idle: int, slip_hours: float, hourly_rate_usd: float = 85.
         "artists_idle": artists_idle,
         "slip_hours": round(slip_hours, 2),
         "assumed_hourly_rate_usd": hourly_rate_usd,
-        "note": "assumed rate — state it whenever you quote the figure",
+        "note": "assumed rate, state it whenever you quote the figure",
     }

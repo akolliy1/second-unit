@@ -1,7 +1,7 @@
 """Live mode: the real pipeline, emitting the events the page already renders.
 
 The UI was built against `fixture.json`, a recording of a real run. This module produces
-the identical event shapes from the actual agents, so the client needed no changes at all —
+the identical event shapes from the actual agents, so the client needed no changes at all, 
 which is the whole reason the fixture's field names were copied from `schemas.py` rather
 than invented.
 
@@ -224,7 +224,7 @@ async def iter_live_events(shot: str = "SH042") -> AsyncIterator[dict]:
                    "reason": "quota" if quota else "stage_error",
                    "hint": ("The model is rate limited right now. The recorded "
                             "investigation on this page is a real run and shows the same "
-                            "pipeline end to end — press Run investigation without "
+                            "pipeline end to end, press Run investigation without "
                             "?live=1.")
                            if quota else
                            "Later stages were skipped: they depend on this output."}
@@ -252,7 +252,7 @@ async def iter_live_events(shot: str = "SH042") -> AsyncIterator[dict]:
         if stage_id == "remediation_planner":
             yield writeback_event(outputs["remediation_planner"])
             # The dailies briefing. Composed HERE, where the typed stage outputs still
-            # exist, rather than in the audio endpoint — synthesis then needs only a
+            # exist, rather than in the audio endpoint, synthesis then needs only a
             # string, and the script is deterministic from data we have already verified.
             try:
                 script = compose_briefing(
@@ -260,7 +260,7 @@ async def iter_live_events(shot: str = "SH042") -> AsyncIterator[dict]:
                     outputs["remediation_planner"], shot=shot)
                 yield {"type": "briefing", "script": script,
                        "seconds_estimate": round(estimated_seconds(script))}
-            except Exception as exc:  # noqa: BLE001 — a briefing must not fail a run
+            except Exception as exc:  # noqa: BLE001, a briefing must not fail a run
                 yield {"type": "briefing", "script": "",
                        "error": f"{type(exc).__name__}: {exc}"}
 

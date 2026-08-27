@@ -1,4 +1,4 @@
-# Second Unit — one container, two processes.
+# Second Unit: one container, two processes.
 #
 # The architecture doc has the MCP bridge as its own Cloud Run service. Collapsing it into
 # this container instead removes a public network hop, a second bearer token, a second cold

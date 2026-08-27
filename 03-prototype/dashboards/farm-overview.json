@@ -1,6 +1,6 @@
 {
   "uid": "second-unit-farm-vancouver",
-  "title": "Render Farm \u2014 Vancouver",
+  "title": "Render Farm. Vancouver",
   "description": "Pipeline TD's daily driver for the Vancouver render farm: throughput, per-node health, queue pressure and failure reasons, with the scheduler log alongside. Baseline dashboard, hand-built for the Second Unit prototype.",
   "tags": [
     "second-unit",

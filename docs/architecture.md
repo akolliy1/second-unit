@@ -1,11 +1,11 @@
-# Second Unit — System Architecture
+# Second Unit. System Architecture
 
 Status: design, pre-build · Owner: solo · Target: Agentic Cinema, Grafana Labs track
 Deadline: **2026-09-07** (operating) · Amended 2026-08-25, see §0
 
 ---
 
-## 0. Amendment — 2026-08-25
+## 0. Amendment, 2026-08-25
 
 Three changes to the design below, all driven by Grafana's official build session
 (`00-intel/02-build-session-intel.md`) and by four lost days.
@@ -17,17 +17,17 @@ flow was uncompletable by a headless agent. The build session connects an ADK ag
 **Grafana Cloud MCP by one URL** and covers authorization directly (07:09) as well as the
 local/OSS question (08:14).
 
-**RESOLVED 2026-08-26 — the bridge stays. The optimistic reading was wrong.**
+**RESOLVED 2026-08-26, the bridge stays. The optimistic reading was wrong.**
 We probed five surfaces (`03-prototype/spike/probe_mcp.py`). All five refuse a static
 service account token, and the authorization-server metadata settles why:
-`grant_types_supported` is `["authorization_code", "refresh_token"]` — **there is no
+`grant_types_supported` is `["authorization_code", "refresh_token"]`, **there is no
 `client_credentials` grant**. Every supported grant needs a user agent that can complete a
 redirect, so no header combination lets a headless Agent Engine deployment authenticate.
 The build session works because it runs locally, next to a browser.
 
 So the topology in §2 stands as originally designed: we bridge through Grafana's official
 open-source `mcp-grafana` server, authenticated to our Grafana Cloud stack with a service
-account token. Same server project, same Cloud stack, same tools, real runtime calls — with
+account token. Same server project, same Cloud stack, same tools, real runtime calls, with
 an auth path that survives serverless deployment.
 
 This is a better position than a lucky guess would have been. We can state the constraint
@@ -41,12 +41,12 @@ Every LLM call and every MCP tool call emits token count, latency and outcome to
 Grafana Cloud stack the agent is investigating.
 
 Why this is worth a day: criterion 1 is "how well it uses Google Cloud **and** the Partner
-service." This uses Grafana in two distinct modes — as the agent's tool surface and as the
-agent's own telemetry backend — and it produces the single best shot in the demo video: a
+service." This uses Grafana in two distinct modes, as the agent's tool surface and as the
+agent's own telemetry backend, and it produces the single best shot in the demo video: a
 Grafana dashboard of the agent that is diagnosing a Grafana dashboard. It also gives us a
 real answer to "why Flash here and a stronger model there," on camera, with data.
 
-### 0.4 The approval gate is structural, not instructional — upgraded 2026-08-26
+### 0.4 The approval gate is structural, not instructional, upgraded 2026-08-26
 The original design put "forced function calling" on the approval gate: the model must call
 `request_human_approval` before reaching a write tool. That is good, but it is still a rule
 the model is asked to follow, and the write tools are sitting in its toolset the whole time.
@@ -64,7 +64,7 @@ The implemented design removes the capability instead of restricting its use:
 Two consequences worth stating to a judge:
 1. An un-approved run has **no privileged surface**. The agent is not trusted to respect a
    boundary; it is structurally incapable of crossing one.
-2. The approval is **attributable** — `Approval` records who, when, and what, so the
+2. The approval is **attributable**, `Approval` records who, when, and what, so the
    write-back has an audit trail rather than a boolean.
 
 `Approval` with an empty `approved` list is a valid, recorded decision: the operator said no.
@@ -72,7 +72,7 @@ Two consequences worth stating to a judge:
 ### 0.5 The forecast arithmetic is not the model's job
 `tools.forecast_delivery` is plain Python. The Forecaster measures frames remaining and both
 the current and pre-incident completion rates from Prometheus, then calls it and quotes the
-result. The ETA is therefore reproducible and auditable — and when a judge asks where the
+result. The ETA is therefore reproducible and auditable, and when a judge asks where the
 number came from, the answer is a function, not a prompt. `idle_cost` does the same for the
 crew-cost figure and always returns its assumed hourly rate alongside it, because an
 unlabelled cost estimate is worse than none.
@@ -141,7 +141,7 @@ flowchart TB
 ### Why `mcp-bridge` exists as its own service
 Agent Engine hosts a Python agent; it does not run sidecar containers. The Grafana MCP
 server is a Go binary. So it gets its own Cloud Run service, and the agent reaches it over
-streamable HTTP with a bearer token. This is not incidental — it is the thing that makes
+streamable HTTP with a bearer token. This is not incidental, it is the thing that makes
 the Grafana integration deployable at all, and it is worth one slide in the video.
 
 ### Why the seeder runs continuously
@@ -152,7 +152,7 @@ effect on the Design score.
 
 ---
 
-## 3. Request flow — one triage run
+## 3. Request flow, one triage run
 
 ```mermaid
 sequenceDiagram
@@ -242,7 +242,7 @@ capability guarantee, not a behavioural one.
 | Model returns unparseable stage output | pydantic validation | one bounded retry with the validation error appended, then fail the stage explicitly |
 | Forecast has insufficient throughput data | precondition check in Python | returns `insufficient_data`, never a fabricated ETA |
 | Vertex quota exhausted | API error | UI surfaces a real message; last completed run stays viewable from Firestore |
-| Judge opens the app cold | — | last persisted run renders instantly; live re-run is one click |
+| Judge opens the app cold |, | last persisted run renders instantly; live re-run is one click |
 
 That last row matters more than it looks. **Never show a judge a spinner as a first
 impression.** Cache the last good run and render it immediately.
@@ -251,21 +251,21 @@ impression.** Cache the last good run and render it immediately.
 
 ## 7. Architecture decision records
 
-### ADR-001 — Grafana Labs track
+### ADR-001. Grafana Labs track
 Prizes are identical across five tracks, so track choice is a competition-density and
 integration-depth decision. Grafana has the deepest partner surface (60+ tools, including
 writes) and is the least attractive track to the median entrant in a hackathon named
 *Agentic Cinema*. See `00-intel/01-track-analysis.md`.
 **Consequence:** committed after the Day-1 spike went green; ClickHouse was the fallback.
 
-### ADR-002 — OSS `mcp-grafana` on Cloud Run, not hosted `mcp.grafana.com`
+### ADR-002, OSS `mcp-grafana` on Cloud Run, not hosted `mcp.grafana.com`
 The hosted Cloud MCP endpoint authenticates via interactive OAuth 2.1, which a headless
 Agent Engine deployment cannot complete unattended. The official open-source server accepts
 a static service account token and speaks the same protocol against the same Cloud stack.
 **Consequence:** one extra Cloud Run service; a compliance question raised with organisers
 in writing before building. Revisit if they require the hosted endpoint specifically.
 
-### ADR-003 — Delivery ETA is computed in Python, not by the model
+### ADR-003. Delivery ETA is computed in Python, not by the model
 LLM arithmetic is not reproducible. A judge who runs the triage twice and gets two
 different ETAs concludes it is a toy. `forecast_delivery()` is a pure function over
 throughput and frames-remaining, unit-tested with golden values. The model only narrates
@@ -273,22 +273,22 @@ its output.
 **Consequence:** the headline number is defensible and identical across runs. This is the
 single most important correctness decision in the system.
 
-### ADR-004 — Two-phase approval with capability separation, superseding forced function calling
+### ADR-004. Two-phase approval with capability separation, superseding forced function calling
 Forced function calling makes a *tool call* mandatory; it does not make the *authorisation*
 real. Instead: the planning agent has no write tools and a read-only credential; applying
 requires a separate invocation carrying an approved plan id and an editor credential.
 Forced function calling is retained inside the apply phase as defence in depth, not as the
 guarantee.
 **Consequence:** supersedes the approval mechanism described in `01-concept.md`. Two agent
-deployments instead of one — worth it, and it is the governance story the brief asks for.
+deployments instead of one: worth it, and it is the governance story the brief asks for.
 
-### ADR-005 — Continuously generated synthetic telemetry
+### ADR-005. Continuously generated synthetic telemetry
 No studio will lend a render farm. Static fixtures make the hosted demo look abandoned.
 **Consequence:** a seeder service and a scripted scenario are first-class deliverables, not
 test scaffolding.
 
-### ADR-006 — `SequentialAgent` composition over one agent with many tools
-A single agent holding 60 tools produces non-reproducible tool-selection order — the
+### ADR-006, `SequentialAgent` composition over one agent with many tools
+A single agent holding 60 tools produces non-reproducible tool-selection order, the
 opposite of the "deterministic, multi-step" requirement. Fixed stages with typed contracts
 between them are inspectable, individually testable, and let each stage carry a narrow,
 purpose-written instruction.

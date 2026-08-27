@@ -87,7 +87,7 @@
 
 /* ------------------------------------------------------- dailies briefing
    A crew's morning is a stand-up, not a dashboard review. The briefing is the finding in
-   the form a producer already uses — someone telling them — so it sits directly under the
+   the form a producer already uses, someone telling them, so it sits directly under the
    verdict rather than in a panel they would have to go looking for. */
 .briefing{
   display:flex; align-items:center; gap:.7rem; flex-wrap:wrap;
@@ -112,13 +112,13 @@
 .briefing .berr{flex:1 1 100%; color:var(--red); font-size:.8rem; display:none}
 .briefing[data-error="1"] .berr{display:block}
 /* No verdict, no briefing. Offering to read aloud a finding that does not exist is worse
-   than offering nothing — it implies the run produced something. */
+   than offering nothing, it implies the run produced something. */
 html[data-no-verdict="1"] .briefing{display:none}
 
 /* the chooser overlay became the /start page */
 /* -------------------------------------------------------- subject switcher
    The first version put a grid of shot cards at the top of this page. Wrong on two counts:
-   it does not scale past a handful of shots, and Investigation is a DETAIL view — the list
+   it does not scale past a handful of shots, and Investigation is a DETAIL view, the list
    belongs on /shots, which already filters and sorts. What a detail view needs is a compact
    way to say which subject it is showing and to move to another, so this is a switcher, not
    a list. */
@@ -152,12 +152,12 @@ html[data-no-verdict="1"] .briefing{display:none}
 .subjbar a.allshots{font-size:.78rem}
 
 /* When the selected subject has no recorded run, the recorded verdict is not "close
-   enough" — it is the wrong shot's evidence. Hide the whole run and show a call to action
+   enough", it is the wrong shot's evidence. Hide the whole run and show a call to action
    instead. Showing SH042's finding under an SH043 heading is the kind of thing that ends
    trust in a tool permanently. */
 /* Hide the WHOLE run block, not just the inner zone. The ids sit on inner divs, so hiding
-   those left the section headers behind — "PIPELINE 3 stages", "EVIDENCE 9 cited facts",
-   "requires human approval" — all counts from the wrong shot's run, sitting under a heading
+   those left the section headers behind, "PIPELINE 3 stages", "EVIDENCE 9 cited facts",
+   "requires human approval", all counts from the wrong shot's run, sitting under a heading
    that said no run existed. Exactly the contradiction this state was added to prevent. */
 html[data-subject-mismatch="1"] #verdictZone,
 html[data-subject-mismatch="1"] #runDetail,
@@ -172,7 +172,7 @@ html[data-subject-mismatch="1"] .nosubject{display:block}
 /* ------------------------------------------------------------------- ask
    A scoped question box, not a chat window. The distinction is load-bearing: a router runs
    first and an out-of-scope question comes back in seconds with an honest reason and no
-   tool calls, so the box cannot produce a slow confident non-answer — which is the failure
+   tool calls, so the box cannot produce a slow confident non-answer, which is the failure
    mode that would define the product in a judge's memory. */
 .ask{margin:1.2rem 0 0}
 .ask-chips{display:flex; gap:.35rem; flex-wrap:wrap; margin-bottom:.55rem}
@@ -206,7 +206,7 @@ html[data-subject-mismatch="1"] .nosubject{display:block}
 .ask-ev .q{font-family:var(--mono); font-size:.74rem; color:var(--ink3); overflow-x:auto;
   display:block; white-space:pre; margin-top:.15rem}
 /* The work, shown as it happens. A one-line counter told you a number was going up; the
-   pipeline gets a row per stage, and the ask box should not be a lesser citizen — the wait
+   pipeline gets a row per stage, and the ask box should not be a lesser citizen, the wait
    is the evidence that something real is being measured. */
 .ask-calls{margin:.45rem 0 0; padding:0; list-style:none; display:grid; gap:.25rem}
 .ask-calls li{
@@ -233,7 +233,7 @@ html[data-persona="producer"] .ask-ev .q{display:none}
 
 /* per-persona: exactly ONE framing visible, and it works before JS runs.
    This was lost in the multi-page refactor: the cut that removed the modal chooser's styles
-   ran from the `picker` banner to the `stages` banner, and this rule sat between them — so
+   ran from the `picker` banner to the `stages` banner, and this rule sat between them, so
    all three framings rendered stacked, which is the opposite of the product's whole claim.
    The regression was invisible to every automated check we had, because "three headings
    instead of one" is valid HTML with no errors. Only looking at it caught it. */
@@ -388,7 +388,7 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
     <select class="subjsel" id="subjSel" aria-label="Which shot to investigate">
       <option value="SH042">SH042 · lighting</option>
     </select>
-    <span class="pill" id="subjStatus" data-status="">—</span>
+    <span class="pill" id="subjStatus" data-status="">, </span>
     <span class="meta" id="subjMeta"></span>
     <span class="spacer"></span>
     <a class="allshots" href="/shots">All shots →</a>
@@ -445,7 +445,7 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
       <div class="verdict" data-severity="none">
         <div class="errcard">
           <div class="etitle">✗ The investigation did not reach a verdict</div>
-          <div class="emsg" id="vErrMsg">—</div>
+          <div class="emsg" id="vErrMsg">, </div>
           <div class="ehint">No verdict is shown because no stage produced one. Nothing was written to Grafana.
             The stage stream below shows how far the pipeline got.</div>
         </div>
@@ -468,8 +468,8 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
 
   <!-- ==================================================== RUN DETAIL (tabs) -->
   <!-- Pipeline, Evidence and Write-back are three views of ONE run, so they tab.
-       The verdict, the briefing and the ask box stay outside: a narrative — what happened,
-       why, what it costs, what to do — reads top to bottom, and tabbing an argument breaks
+       The verdict, the briefing and the ask box stay outside: a narrative, what happened,
+       why, what it costs, what to do, reads top to bottom, and tabbing an argument breaks
        it. Tabbing three views of the same evidence just stops the page being a
        four-thousand-pixel scroll. -->
   <div id="runDetail">
@@ -490,9 +490,9 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
       <div class="st st-ready">
         <div class="errcard" id="stagesErr" style="margin:1rem" hidden>
           <div class="etitle">✗ Pipeline halted</div>
-          <div class="emsg" id="stagesErrMsg">—</div>
+          <div class="emsg" id="stagesErrMsg">, </div>
           <div class="ehint">A stage whose output fails schema validation is a failed stage, not prose to
-            reinterpret — so nothing downstream of it ran.</div>
+            reinterpret, so nothing downstream of it ran.</div>
         </div>
         <ol class="stages" id="stages"></ol>
       </div>
@@ -505,7 +505,7 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
       <div class="st st-error" style="padding:1rem">
         <div class="errcard">
           <div class="etitle">✗ The pipeline did not start</div>
-          <div class="emsg" id="stagesErrMsg2">—</div>
+          <div class="emsg" id="stagesErrMsg2">, </div>
           <div class="ehint">No stage ran, so there is nothing to show. This is a transport or
             server-side failure, not a failed diagnosis.</div>
         </div>
@@ -535,7 +535,7 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
       <div class="st st-error"><div class="panel-body">
         <div class="errcard">
           <div class="etitle">✗ Evidence unavailable</div>
-          <div class="emsg" id="evErrMsg">—</div>
+          <div class="emsg" id="evErrMsg">, </div>
           <div class="ehint">Claims without citeable evidence are not shown at all. That is deliberate.</div>
         </div>
       </div></div>
@@ -570,7 +570,7 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
       <div class="st st-error"><div class="panel-body">
         <div class="errcard">
           <div class="etitle">✗ Approval failed</div>
-          <div class="emsg" id="wbErrMsg">—</div>
+          <div class="emsg" id="wbErrMsg">, </div>
           <div class="ehint">Nothing was written. You can retry the approval, or re-run the investigation.</div>
         </div>
         <div class="wbfoot"><button class="btn" id="btnApproveRetry" type="button">Retry approval</button></div>
@@ -604,7 +604,7 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
   <div class="actions">
     <button class="btn primary" id="btnRun" type="button">Run investigation</button>
     <button class="btn" id="btnReset" type="button">Clear this run</button>
-    <span class="hint" id="actionHint">Replay runs at {{ replay_speed }}× — the recorded run took 129.5s of real wall clock.</span>
+    <span class="hint" id="actionHint">Replay runs at {{ replay_speed }}×, the recorded run took 129.5s of real wall clock.</span>
   </div>
 
   <footer>
@@ -620,18 +620,18 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
 {% block docs %}
 <h3>Investigation</h3>
 <p>Five agent stages run in a fixed order, and each hands the next a <b>typed object</b>
-rather than prose — so a stage cannot quietly reinterpret its predecessor's opinion.</p>
+rather than prose, so a stage cannot quietly reinterpret its predecessor's opinion.</p>
 
 <h4>What you are watching</h4>
 <ul>
-  <li><b>Watchtower</b> — what is abnormal. Breadth only; it is explicitly told not to
+  <li><b>Watchtower</b>, what is abnormal. Breadth only; it is explicitly told not to
       diagnose, because a premature guess poisons everything downstream.</li>
-  <li><b>Diagnostician</b> — why, and it must rule things <i>out</i>. The asset pipeline
+  <li><b>Diagnostician</b>, why, and it must rule things <i>out</i>. The asset pipeline
       emits warnings all through the incident; they start <i>before</i> it, so they are
       noise. Watch for that row.</li>
-  <li><b>Impact Forecaster</b> — the delivery consequence. The arithmetic is a Python
+  <li><b>Impact Forecaster</b>, the delivery consequence. The arithmetic is a Python
       function, not the model, and it <b>refuses</b> inputs it cannot believe.</li>
-  <li><b>Remediation Planner</b> — the fix and the proposed write-back. It holds
+  <li><b>Remediation Planner</b>, the fix and the proposed write-back. It holds
       <b>no write tools at all</b>.</li>
 </ul>
 
@@ -639,7 +639,7 @@ rather than prose — so a stage cannot quietly reinterpret its predecessor's op
 <p>Every claim carries the tool call and the exact <code>PromQL</code> or <code>LogQL</code>
 that produced it, against a live Grafana Cloud stack through the Grafana MCP server. Nothing
 is cached; nothing is mocked. The review deadline is read from telemetry
-(<code>shot_review_deadline_seconds</code>) — a commitment the agent discovers rather than
+(<code>shot_review_deadline_seconds</code>), a commitment the agent discovers rather than
 one we hand it.</p>
 
 <h4>The approval gate</h4>
@@ -647,19 +647,19 @@ one we hand it.</p>
 the stage that proposes writes has no mutating tools, and the executor that does is only
 constructed once an approval record exists naming who approved which items. An unapproved
 run has no privileged surface at all.</p>
-<div class="dnote">Approved writes are then checked <b>out of band</b> — through Grafana's
-HTTP API, not the MCP tools the agent just used — and disagreements are reported. See the
+<div class="dnote">Approved writes are then checked <b>out of band</b>, through Grafana's
+HTTP API, not the MCP tools the agent just used, and disagreements are reported. See the
 <a href="/agent">Agent</a> page.</div>
 
 <h4>Recorded vs live</h4>
 <p>The page loads a real recorded run, so there is a finding on first paint. Add
-<code>?live=1</code> to run the agents now against current telemetry — that costs Vertex
+<code>?live=1</code> to run the agents now against current telemetry, that costs Vertex
 quota and takes roughly three minutes. If quota is exhausted the stream says so and points
 back here rather than failing silently.</p>
 
 <h4>The dailies briefing</h4>
 <p>The same finding, spoken, in about fifty seconds. The script is composed in Python from
-the stage outputs — not generated by a sixth model call — so every number in it has already
+the stage outputs, not generated by a sixth model call, so every number in it has already
 been computed and verified.</p>
 {% endblock %}
 
@@ -667,7 +667,7 @@ been computed and verified.</p>
 <script>
 
 /* ============================================================================
-   Second Unit — client. Vanilla, no framework, no build.
+   Second Unit: client. Vanilla, no framework, no build.
 
    The whole client is a switch on `event.type`. The recorded run embedded below and the
    live SSE stream emit the *same* events, so `handle()` is the only renderer and there is
@@ -696,7 +696,7 @@ const STATE = {
 function zone(id, state) { $(id).dataset.state = state; }
 function status(text, kind) {
   /* The freshness indicator lives in the shared top bar now, so go through its helper
-     instead of reaching for #statusText/#dot — those IDs belonged to this page's old
+     instead of reaching for #statusText/#dot, those IDs belonged to this page's old
      chrome. Without this, every status update throws on a null element. */
   fresh(kind || "", text);
 }
@@ -736,7 +736,7 @@ function renderVerdict(v) {
   $("verdict").dataset.severity = v.severity || "critical";
   $("vSeverity").textContent = "⚠ " + String(v.severity || "").toUpperCase();
   $("vSubject").textContent = v.subject || "";
-  /* STATE.live only means "arriving over the stream" — a recorded replay streams too. The
+  /* STATE.live only means "arriving over the stream", a recorded replay streams too. The
      stamp must distinguish agents that just ran from a recording being replayed, or the
      page tells the reader a recording is a live result. */
   $("vStamp").textContent =
@@ -770,7 +770,7 @@ function stageRow(id, label, role) {
       '<span class="stage-name">' + esc(label) + "</span>" +
       '<span class="stage-role">' + esc(role || "") + "</span>" +
       '<span class="stage-pill">pending</span>' +
-      '<span class="stage-meta">—</span>' +
+      '<span class="stage-meta">, </span>' +
     "</button><div class='stage-body'></div>";
   const head = li.querySelector(".stage-head");
   head.addEventListener("click", () => {
@@ -798,7 +798,7 @@ function addToolCall(ev) {
     li.querySelector(".stage-body").appendChild(box);
     list = box.querySelector(".calls");
   }
-  /* The interesting argument is the query itself — that is what makes a tool call
+  /* The interesting argument is the query itself, that is what makes a tool call
      auditable rather than a number. Same key order as ToolCallRecord.one_line(). */
   const keys = ["expr", "logql", "query", "regex", "label", "datasourceUid"];
   const args = ev.args || {};
@@ -857,7 +857,7 @@ function renderStageOutput(id, out) {
       esc(out.shot) + " " + esc(out.department) + " · " + esc(out.frames_remaining) +
       " frames left at " + esc(out.throughput_now) + " fr/min (baseline " +
       esc(out.throughput_baseline) + ") · ETA " + esc(out.eta_at_current_rate) +
-      " against a " + esc(out.deadline) + " deadline — " + esc(out.slip_human) + " late."));
+      " against a " + esc(out.deadline) + " deadline, " + esc(out.slip_human) + " late."));
     if ((out.notes || []).length)
       parts.push(KV("Working", '<ol class="chain">' +
         out.notes.map((n) => "<li>" + esc(n) + "</li>").join("") + "</ol>"));
@@ -925,7 +925,7 @@ async function approve() {
   btn.disabled = true;
   btn.innerHTML = '<span class="spin"></span>Writing…';
   try {
-    if (!STATE.runId) throw new Error("no run to approve — press Run investigation first");
+    if (!STATE.runId) throw new Error("no run to approve, press Run investigation first");
     const r = await fetch("/api/run/" + STATE.runId + "/approve", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1023,7 +1023,7 @@ function handle(ev) {
       break;
 
     /* Failure is a rendered state, not a blank page. The stage that broke says why, the
-       verdict zone explains that there is no verdict, and the write-back is withdrawn —
+       verdict zone explains that there is no verdict, and the write-back is withdrawn, 
        because an unproven diagnosis must not be writable. */
     case "stage_failed":
       const fli = stageState(ev.stage, "failed", "failed", "failed");
@@ -1045,7 +1045,7 @@ function handle(ev) {
       break;
 
     case "run_failed":
-      /* Any stage still marked running has stopped — the run is over. Leaving it spinning
+      /* Any stage still marked running has stopped, the run is over. Leaving it spinning
          says the pipeline is working when it is not, which is the same class of untruth as
          a replay stamped "live". */
       document.querySelectorAll('.stage[data-state="running"]').forEach((el) => {
@@ -1098,8 +1098,8 @@ async function runInvestigation() {
     const { run_id } = await r.json();
     STATE.runId = run_id; STATE.live = true; STATE.done = false;
     /* The run now IS about the selected shot, so the "no recorded run" state no longer
-       applies — reveal the zones the stream is about to fill. */
-    /* What the run is actually about — not what is selected. A recorded replay is about
+       applies, reveal the zones the stream is about to fill. */
+    /* What the run is actually about, not what is selected. A recorded replay is about
        the recording's shot however the switcher is set; claiming otherwise mislabels the
        evidence, which is the one thing this page must never do. */
     STATE.runShot = STATE.liveAgents ? SUBJECT.shot : SUBJECT.recorded;
@@ -1163,7 +1163,7 @@ $("btnReset").addEventListener("click", async () => {
     const r = await fetch("/api/reset", { method: "POST" });
     const d = await r.json().catch(() => null);
     /* Report where the SCENARIO is, not a fiction about resetting it. The farm runs on a
-       loop in Cloud Run and nothing in this page can rewind it — pretending otherwise is
+       loop in Cloud Run and nothing in this page can rewind it, pretending otherwise is
        the exact failure this project exists to argue against. */
     if (d && d.message) status(d.cycle_phase || "cleared", "");
     if (d && d.message) $("stagesNote").textContent = d.message;
@@ -1178,8 +1178,8 @@ $("btnReset").addEventListener("click", async () => {
   $("btnApprove").disabled = false;
   $("btnApprove").textContent = "Approve and write";
   $("wbResult").hidden = true;
-  /* Say what actually happened. Nothing here can rewind the farm — it is generated by a
-     Cloud Run job on its own loop — and this string claimed otherwise. */
+  /* Say what actually happened. Nothing here can rewind the farm, it is generated by a
+     Cloud Run job on its own loop, and this string claimed otherwise. */
   $("actionHint").textContent = "Run cleared. The farm keeps running on its own cycle.";
   status("idle", "");
   btn.disabled = false;
@@ -1226,7 +1226,7 @@ $("btnBrief").addEventListener("click", async () => {
             if (j.script) { $("briefScript").textContent = j.script;
                             $("briefing").dataset.open = "1"; } } catch (_) {}
       $("briefing").dataset.error = "1";
-      $("briefErr").textContent = msg + " — the text of the briefing is shown below.";
+      $("briefErr").textContent = msg + ", the text of the briefing is shown below.";
       btn.textContent = "▶ Dailies briefing"; btn.disabled = false; return;
     }
     const blob = await r.blob();
@@ -1284,7 +1284,7 @@ function renderSubject() {
 function applySubjectMismatch() {
   /* A run belongs to ONE shot. If the operator is asking about another, showing it would
      put the wrong shot's evidence under their heading.
-     Compare against the shot the DISPLAYED RUN is about — not against STATE.done, which the
+     Compare against the shot the DISPLAYED RUN is about, not against STATE.done, which the
      recorded hydration sets to true, so the check never fired on the landing state. */
   const shown = STATE.runShot || SUBJECT.recorded;
   const mismatch = SUBJECT.shot !== shown;
@@ -1295,7 +1295,7 @@ function applySubjectMismatch() {
     $("noSubjectBody").textContent =
       "The run on this page investigated " + shown + ", and a recording cannot " +
       "be re-pointed after the fact. Running the agents now will investigate " +
-      SUBJECT.shot + " against current telemetry — about three minutes.";
+      SUBJECT.shot + " against current telemetry, about three minutes.";
   }
 }
 
@@ -1330,7 +1330,7 @@ function askState(st, statusText) {
 }
 
 /* The two-step pipeline, made visible: scope check, then measurement. Showing the router as
-   its own step is the point — it is why an out-of-scope question comes back in seconds
+   its own step is the point, it is why an out-of-scope question comes back in seconds
    instead of after a minute of pointless querying. */
 function askSteps(scope, measure) {
   const row = (label, state) =>
@@ -1339,7 +1339,7 @@ function askSteps(scope, measure) {
      : state === "run" ? '<span class="spin"></span>'
      : '<span class="dim">·</span>') +
     "<span>" + esc(label) + "</span></div>";
-  $("askSteps").innerHTML = row("Scope check — can this farm's telemetry answer it?", scope) +
+  $("askSteps").innerHTML = row("Scope check, can this farm's telemetry answer it?", scope) +
     (measure ? row("Measuring against live telemetry", measure) : "");
 }
 
@@ -1463,7 +1463,7 @@ const RUNTABS = initTabs("runDetail", {
 
 /* ------------------------------------------------------------------ boot */
 function hydrateRecorded() {
-  /* Instant, un-paced replay of the recorded run. Same events, same renderer — the only
+  /* Instant, un-paced replay of the recorded run. Same events, same renderer, the only
      difference from a live run is that STATE.live is false, so nothing auto-expands and
      the verdict is stamped "recorded". */
   STATE.live = false;

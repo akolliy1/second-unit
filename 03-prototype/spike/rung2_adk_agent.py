@@ -72,7 +72,7 @@ def build_connection(target):
         try:
             return StreamableHTTPConnectionParams(url=url, headers=headers, timeout=30)
         except Exception:  # noqa: BLE001
-            print("!! could not set a timeout on the MCP connection — watch for hangs")
+            print("!! could not set a timeout on the MCP connection, watch for hangs")
             return StreamableHTTPConnectionParams(url=url, headers=headers)
 
 
@@ -116,13 +116,13 @@ async def main(target):
 
     print(f"\ntool calls made: {tool_calls}")
     if tool_calls and final:
-        print(f"RUNG 2 GREEN via '{target}' — the Grafana track is GO. Stop debugging auth.")
+        print(f"RUNG 2 GREEN via '{target}': the Grafana track is GO. Stop debugging auth.")
         if target == "cloud":
             print("Hosted Cloud MCP works headless: drop the bridge from the deployed")
             print("topology (architecture 0.1) and say so plainly in the README.")
         print("Next: seed the render-farm telemetry (03-prototype/telemetry/seed.py).")
     else:
-        print(f"RUNG 2 RED via '{target}' — no tool calls, or no output.")
+        print(f"RUNG 2 RED via '{target}': no tool calls, or no output.")
         if target == "cloud":
             print("Expected if the hosted endpoint requires interactive OAuth 2.1.")
             print("Re-run with --target bridge; that result is the plan of record.")

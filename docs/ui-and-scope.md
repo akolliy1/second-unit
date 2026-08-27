@@ -1,4 +1,4 @@
-# UI, users, and scope — decided 2026-08-26
+# UI, users, and scope, decided 2026-08-26
 
 12 days to the operating deadline, solo. This document exists to stop us building a
 platform when the thing being judged is **one link and a three-minute video**.
@@ -7,8 +7,8 @@ platform when the thing being judged is **one link and a three-minute video**.
 
 ## 1. Is a UI required? Yes, and it is a disqualifying gate
 
-> "URL to the **hosted, running project**" — judges will click and test it.
-> "**Design** — delivers a complete product experience" — 25% of the score.
+> "URL to the **hosted, running project**": judges will click and test it.
+> "**Design**, delivers a complete product experience", 25% of the score.
 
 So a UI is not optional. But read what the gate actually demands: a stranger clicks a link
 and something coherent happens. It does not demand a platform, an admin area, or user
@@ -24,20 +24,20 @@ video, which is the artifact they actually experience.
 Deep RBAC would be actively harmful here, for four reasons:
 
 1. **It breaks the gate.** The hosted URL must work for a logged-out stranger on a phone,
-   with no Google session. Any login wall risks a judge bouncing — and "it worked on my
+   with no Google session. Any login wall risks a judge bouncing, and "it worked on my
    machine with my account" is how submissions die. So there is **no auth at all** on the
    demo URL. With no auth, roles have nothing to attach to.
 2. **The real permission boundary already exists and is not ours.** The Grafana service
    account token carries the actual authority (`dashboards:write`, `alert.rules:write`,
    `annotations:write`). That is enforced by Grafana, server-side, and we cannot weaken or
    fake it. App-level roles on top would be decoration over someone else's ACL.
-3. **We have exactly one privileged action** — the write-back. It is already governed, and
+3. **We have exactly one privileged action**, the write-back. It is already governed, and
    governed in the way that scores: a forced-function-calling approval gate. That is a
    boolean a human flips, not a role matrix.
 4. **It is invisible to judging.** None of the four criteria reward an access-control
    model. Potential Impact rewards the *verdict*; Design rewards *finish*.
 
-**What we build instead of RBAC:** a **persona toggle** — the same investigation, reframed.
+**What we build instead of RBAC:** a **persona toggle**, the same investigation, reframed.
 Cheap to build, and it makes the entire thesis of the project visible in one click:
 
 | Persona | Sees the same finding as |
@@ -74,7 +74,7 @@ One route (`/`), one column, five zones top to bottom. Dark "studio console" pal
 │             query_loki_logs  · {service="render-node"} |= "uncorr…"  │  with deeplinks into
 │             [open in Grafana ↗]                                      │  the real stack
 ├──────────────────────────────────────────────────────────────────────┤
-│  PROPOSED WRITE-BACK — requires approval                             │
+│  PROPOSED WRITE-BACK, requires approval                             │
 │   □ annotation on the render-farm timeline                           │  the governance beat.
 │   □ incident dashboard "SH042 lighting slip"                         │  nothing runs until a
 │   □ alert rule: ECC errors > 0 for 5m                                │  human clicks.
@@ -84,23 +84,23 @@ One route (`/`), one column, five zones top to bottom. Dark "studio console" pal
 ```
 
 **Zones, and why each earns its place:**
-1. **Verdict banner** — the one sentence a producer acts on, in the largest type on the
+1. **Verdict banner**, the one sentence a producer acts on, in the largest type on the
    page. If a judge reads nothing else, they read this.
-2. **Stage stream** — proves the pipeline is deterministic and multi-step, live, with real
+2. **Stage stream**, proves the pipeline is deterministic and multi-step, live, with real
    tool-call counts. This is the "agent actually functioning" evidence the rules demand.
-3. **Ruled-out line** — showing the decoy *dismissed* is worth more than showing the right
+3. **Ruled-out line**, showing the decoy *dismissed* is worth more than showing the right
    answer found. It is the difference between reasoning and grep.
-4. **Evidence panel** — every claim carries the query that produced it, plus a deeplink into
+4. **Evidence panel**, every claim carries the query that produced it, plus a deeplink into
    the live stack. Makes runtime MCP usage trivial for a skeptical judge to verify.
-5. **Approval gate** — the governance story, as a button.
+5. **Approval gate**: the governance story, as a button.
 
 **Explicitly NOT building:** login, user management, settings, run history, multi-shot
 dashboards, dark/light toggle, mobile-specific layout (responsive is enough), notifications,
 export. Each is a day we do not have.
 
-### 3.1 The profile picker — APPROVED for Day H, 2026-08-26
+### 3.1 The profile picker, APPROVED for Day H, 2026-08-26
 A *persona-selection* entry screen, not authentication: no accounts, no credentials, nothing
-to sign into. "Who's viewing?" — Pipeline TD / VFX Supervisor / Producer — then the console.
+to sign into. "Who's viewing?", Pipeline TD / VFX Supervisor / Producer, then the console.
 
 Worth doing for a reason beyond IA: it states the project's thesis before the agent runs.
 Three people need the same answer in three different languages, and putting that choice first
@@ -111,7 +111,7 @@ Two non-negotiable constraints, both protecting the disqualifying gate:
 - **`/` still lands on the console.** The picker is a first-visit overlay (remembered in
   `localStorage`) plus a dedicated `/start` route for deliberate linking. A judge must never
   meet an interstitial between themselves and the finding.
-- **Always skippable** — a visible "just show me the incident", and `?persona=` bypasses it.
+- **Always skippable**: a visible "just show me the incident", and `?persona=` bypasses it.
 
 This is distinct from the RBAC proposal rejected in §2, and the distinction is the whole
 point: choosing a viewing lens costs nothing and needs no accounts; enforcing *permissions*
@@ -126,7 +126,7 @@ would require auth, which breaks the gate and guards data we do not have.
 Rationale: ADK emits events as the pipeline runs; SSE streams them to the page with about
 twenty lines on each side. Adding React/Vite buys component ergonomics we do not need for
 one page and costs an npm toolchain, a build step, and a deploy surface. The UI work here is
-roughly **one focused day**, not three — but only if we hold this line.
+roughly **one focused day**, not three: but only if we hold this line.
 
 ---
 
@@ -135,7 +135,7 @@ roughly **one focused day**, not three — but only if we hold this line.
 The one that is easy to miss and would quietly fail us:
 
 **5.1 The demo must be evergreen.** Judging happens days after submission, at an hour we do
-not choose. A judge clicking at 03:00 on Sept 12 must find a *live* incident — not a farm
+not choose. A judge clicking at 03:00 on Sept 12 must find a *live* incident, not a farm
 that finished rendering, and not a dead endpoint. So:
 - `seed.py` runs as a **Cloud Run Job on Cloud Scheduler**, streaming continuously.
 - It needs a **`--loop` mode**: replay the scenario on a cycle (healthy baseline → fault →
@@ -152,12 +152,12 @@ current data. `Reset scenario` restarts the incident clock so a judge sees it fr
 Without these, the judge's experience depends on when they happen to arrive.
 
 **5.3 Baseline dashboards.** Two hand-built dashboards so the stack looks like a working
-studio's rather than an empty tenant — and so the agent's written-back dashboard has
+studio's rather than an empty tenant, and so the agent's written-back dashboard has
 something to sit beside. Provisioned as JSON via the Grafana API, checked into the repo.
 
 ---
 
-## 6. Google Stitch, Antigravity, and the $100 credit — clearing up three things
+## 6. Google Stitch, Antigravity, and the $100 credit, clearing up three things
 
 **The $100 credit is GCP billing credit.** It pays for Vertex AI inference, Cloud Run,
 Cloud Scheduler and Secret Manager on `second-unit-506700`. It does **not** grant or unlock
@@ -169,18 +169,18 @@ any of them.
 language quickly. But for a **single page whose layout is already specified above**, it
 solves a problem we do not have, and exporting its output into our FastAPI template is
 friction. **Recommendation: skip.** If the page looks flat once it is real, timebox 45
-minutes with Stitch on the verdict banner only — the one zone where visual weight matters.
+minutes with Stitch on the verdict banner only: the one zone where visual weight matters.
 
 **Antigravity / another agentic IDE:** the switching cost is the problem, not the tool. It
 would not share this session's context, the repo conventions, or the three dependency traps
-already logged — so it starts by rediscovering what we know. **Recommendation: no.** Not
+already logged, so it starts by rediscovering what we know. **Recommendation: no.** Not
 because it is weak, but because mid-sprint tool adoption is how solo builds lose a day.
 
 ---
 
 ## 7. Where parallelism actually helps
 
-The core pipeline must stay coherent — five stages with structured handoffs, written by one
+The core pipeline must stay coherent, five stages with structured handoffs, written by one
 mind. Splitting it produces integration debt we cannot afford. But three artifacts are
 genuinely independent and can be built alongside it:
 
@@ -206,4 +206,4 @@ genuinely independent and can be built alongside it:
 | H | Mon Aug 31 | Product finish: loading/error/empty states, the two baseline dashboards |
 | I | Tue Sep 1 | The 3-minute video. Full day. |
 | J | Wed Sep 2 | Submit. Editing after submission is free. |
-| — | Sep 3–7 | Buffer. Do not spend it in advance. |
+|, | Sep 3–7 | Buffer. Do not spend it in advance. |

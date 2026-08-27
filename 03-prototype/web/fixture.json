@@ -167,8 +167,8 @@
         "output": {
           "summary": "The render farm is experiencing significant frame failures on render-07 due to GPU faults, causing a substantial increase in the lighting department's render queue depth.",
           "firing_alerts": [
-            "RenderQueueDepthHigh (lighting) \u2014 firing 1h 52m",
-            "RenderNodeFrameFailures (render-07) \u2014 firing 1h 47m"
+            "RenderQueueDepthHigh (lighting), firing 1h 52m",
+            "RenderNodeFrameFailures (render-07), firing 1h 47m"
           ],
           "error_signatures": [
             "CUDA error: uncorrectable ECC error encountered (cudaErrorECCUncorrectable) at kernel launch",
@@ -186,7 +186,7 @@
               "claim": "The lighting queue is more than three times its normal depth.",
               "tool": "query_prometheus",
               "query": "sum by (department) (render_queue_depth)",
-              "observed": "lighting=62, animation=9, fx=14, comp=6 \u2014 lighting sat at 18 before 02:14."
+              "observed": "lighting=62, animation=9, fx=14, comp=6, lighting sat at 18 before 02:14."
             },
             {
               "claim": "Frame failures are confined to a single node.",
@@ -463,7 +463,7 @@
         ],
         "personas": {
           "td": {
-            "headline": "render-07 GPU is throwing uncorrectable ECC \u2014 lighting capacity \u221246%",
+            "headline": "render-07 GPU is throwing uncorrectable ECC, lighting capacity \u221246%",
             "sub": "Xid 48 since 02:14, 138 frames failed exit 139 in 90m, all on one node. Peers clean. Scheduler is requeueing onto the fault.",
             "action": "Drain render-07 from the lighting pool, requeue SH042 frames 1184\u20132803 to render-01/08/09, raise a hardware ticket on the GPU.",
             "risk": "Draining costs 1 of 6 nodes; the remaining pool clears the backlog at 9.4 fr/min."
@@ -472,7 +472,7 @@
             "headline": "SH042's lighting pass is 2h 18m behind, and one node is the cause",
             "sub": "render-07 is failing every frame it is given. Nothing is wrong with the shot, the lighting setup, or the other five nodes.",
             "action": "Approve draining render-07. SH042 then lands about 16 minutes before the review instead of 2h 18m after it.",
-            "risk": "No creative rework needed \u2014 no frame rendered on a healthy node has failed."
+            "risk": "No creative rework needed, no frame rendered on a healthy node has failed."
           },
           "producer": {
             "headline": "SH042 misses Friday's 14:00 client review by 2h 18m",
@@ -493,7 +493,7 @@
             "id": "annotation",
             "kind": "annotation",
             "title": "Annotation on the render-farm timeline",
-            "detail": "render-07 GPU fault (Xid 48 / uncorrectable ECC) from 02:14 \u2014 SH042 lighting frames failing exit 139",
+            "detail": "render-07 GPU fault (Xid 48 / uncorrectable ECC) from 02:14, SH042 lighting frames failing exit 139",
             "target": "dashboard: Render Farm Overview",
             "scope": "annotations:write"
           },
@@ -520,7 +520,7 @@
       "after_ms": 900,
       "event": {
         "type": "briefing",
-        "script": "Morning. SH042's lighting pass is behind. It misses today's client review by about 2 hours and 18 minutes. There are 1,619 frames left. The farm is completing 6 a minute, down from 10 \u2014 a 46 percent drop in capacity. A GPU hardware fault on render-07 is producing uncorrectable memory errors. We ruled out 2 other explanations, including the possibility that the other render nodes are also failing and contributing to the problem. Recommended: drain render-07 from the farm and schedule GPU replacement. If that happens now, the pass lands 26 minutes inside the review. The lighting department is blocked on SH042; compositing is blocked downstream once their work in progress clears. Nothing has been changed in Grafana. The write-back is waiting for your approval.",
+        "script": "Morning. SH042's lighting pass is behind. It misses today's client review by about 2 hours and 18 minutes. There are 1,619 frames left. The farm is completing 6 a minute, down from 10, a 46 percent drop in capacity. A GPU hardware fault on render-07 is producing uncorrectable memory errors. We ruled out 2 other explanations, including the possibility that the other render nodes are also failing and contributing to the problem. Recommended: drain render-07 from the farm and schedule GPU replacement. If that happens now, the pass lands 26 minutes inside the review. The lighting department is blocked on SH042; compositing is blocked downstream once their work in progress clears. Nothing has been changed in Grafana. The write-back is waiting for your approval.",
         "seconds_estimate": 48
       }
     },
@@ -535,7 +535,7 @@
     }
   ],
   "briefing": {
-    "script": "Morning. SH042's lighting pass is behind. It misses today's client review by about 2 hours and 18 minutes. There are 1,619 frames left. The farm is completing 6 a minute, down from 10 \u2014 a 46 percent drop in capacity. A GPU hardware fault on render-07 is producing uncorrectable memory errors. We ruled out 2 other explanations, including the possibility that the other render nodes are also failing and contributing to the problem. Recommended: drain render-07 from the farm and schedule GPU replacement. If that happens now, the pass lands 26 minutes inside the review. The lighting department is blocked on SH042; compositing is blocked downstream once their work in progress clears. Nothing has been changed in Grafana. The write-back is waiting for your approval.",
+    "script": "Morning. SH042's lighting pass is behind. It misses today's client review by about 2 hours and 18 minutes. There are 1,619 frames left. The farm is completing 6 a minute, down from 10, a 46 percent drop in capacity. A GPU hardware fault on render-07 is producing uncorrectable memory errors. We ruled out 2 other explanations, including the possibility that the other render nodes are also failing and contributing to the problem. Recommended: drain render-07 from the farm and schedule GPU replacement. If that happens now, the pass lands 26 minutes inside the review. The lighting department is blocked on SH042; compositing is blocked downstream once their work in progress clears. Nothing has been changed in Grafana. The write-back is waiting for your approval.",
     "seconds_estimate": 48
   }
 }

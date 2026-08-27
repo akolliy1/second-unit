@@ -25,7 +25,7 @@ echo "==> venv + deps"
 echo "installed: $(./.venv/bin/python -m pip show google-adk | grep -i ^Version)"
 
 echo "==> .env  (single file at 03-prototype/.env, shared with telemetry/)"
-[ -f ../.env ] || { cp ../.env.example ../.env; echo "created ../.env — FILL IT IN before preflight"; }
+[ -f../.env ] || { cp../.env.example../.env; echo "created../.env, FILL IT IN before preflight"; }
 
 cat <<'NEXT'
 

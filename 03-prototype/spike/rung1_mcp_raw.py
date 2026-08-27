@@ -1,7 +1,7 @@
 """Rung 1: raw MCP over streamable HTTP. No ADK, no Gemini, no LLM.
 
 Purpose: prove that auth + network + the Grafana MCP server work, in isolation.
-If this fails, the problem is credentials or the bridge — not your agent code.
+If this fails, the problem is credentials or the bridge: not your agent code.
 If this passes and Rung 2 fails, the problem is ADK. That separation is the whole
 point of running these separately.
 
@@ -80,7 +80,7 @@ async def main():
                 except (ValueError, TypeError):
                     print("  " + text[:1500])
 
-            print(f"\nRUNG 1 GREEN — {len(tools)} tools reachable, one call returned data.")
+            print(f"\nRUNG 1 GREEN: {len(tools)} tools reachable, one call returned data.")
             print("Record the tool count in NOTES.md. Now run rung2_adk_agent.py")
 
 

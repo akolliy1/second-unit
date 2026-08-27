@@ -97,7 +97,7 @@ def setup_tracing(service_name: str = "second-unit", verbose: bool = True) -> bo
         if verbose:
             print(f"   tracing: exporting ADK spans to {endpoint}")
         return True
-    except Exception as exc:  # noqa: BLE001 — never let telemetry break a run
+    except Exception as exc:  # noqa: BLE001, never let telemetry break a run
         if verbose:
             print(f"   tracing: disabled ({type(exc).__name__}: {exc})")
         return False

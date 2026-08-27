@@ -1,4 +1,4 @@
-"""Prove the seeded incident is visible THROUGH MCP — the path the agent will use.
+"""Prove the seeded incident is visible THROUGH MCP: the path the agent will use.
 
 Querying Grafana's HTTP API directly would prove the data landed. It would not prove the
 agent can reach it, which is the only thing that matters. So every check here goes through
@@ -38,7 +38,7 @@ CHECKS = [
     # Range, and a 15m window: an instant rate([10m]) at `now` goes empty the moment the
     # newest sample is more than 10 minutes old, which is exactly what happened here --
     # this check passed and then failed minutes later with no change to the data.
-    ("throughput dropped — healthy vs now", "query_prometheus", {
+    ("throughput dropped, healthy vs now", "query_prometheus", {
         "datasourceUid": PROM, "queryType": "range", "startTime": "now-90m",
         "endTime": "now", "stepSeconds": 300,
         "expr": 'sum(rate(render_frames_completed_total{shot="SH042"}[15m])) * 60'}),

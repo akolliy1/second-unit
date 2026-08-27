@@ -1,1 +1,1 @@
-"""Second Unit — an autonomous post-production pipeline SRE."""
+"""Second Unit: an autonomous post-production pipeline SRE."""

@@ -5,8 +5,8 @@ also made four `update_dashboard` calls that created no dashboard at all. Readin
 report, you would conclude three writes landed. One did.
 
 An agent's self-report is a claim, not a result. So after every approved write-back we
-check the stack **out of band** — through Grafana's HTTP API rather than the MCP tools the
-agent just used — and report what is actually there. Same principle as the rest of the
+check the stack **out of band**, through Grafana's HTTP API rather than the MCP tools the
+agent just used, and report what is actually there. Same principle as the rest of the
 system: the model decides what to do, code decides what is true.
 """
 import os

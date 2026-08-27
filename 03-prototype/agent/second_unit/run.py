@@ -94,7 +94,7 @@ def published_review_deadline(shot: str = "SH042") -> str:
     than being handed a number by its own harness.
 
     The fallback is DELIBERATELY NOISY. An earlier version swallowed the failure and
-    returned "now + 3 hours", which is plausible, wrong, and silent — the forecaster then
+    returned "now + 3 hours", which is plausible, wrong, and silent, the forecaster then
     reported that the shot comfortably made a deadline that had in fact already passed.
     A wrong deadline invalidates every number downstream of it, so if we cannot read the
     real one, that has to be visible rather than inferred later from a confusing verdict.
@@ -107,7 +107,7 @@ def published_review_deadline(shot: str = "SH042") -> str:
         rows = fleet._prom_query(f'shot_review_deadline_seconds{{shot="{shot}"}}')
         if not rows:
             deadline_fallback_reason = (
-                f"shot_review_deadline_seconds{{shot=\"{shot}\"}} returned no series — "
+                f"shot_review_deadline_seconds{{shot=\"{shot}\"}} returned no series, "
                 f"is the seeder running with --loop?")
         else:
             ts = float(rows[0]["value"][1])
@@ -152,7 +152,7 @@ async def main(stages):
             obs.tools(res.stage, res.tool_calls)
 
     if "watchtower" in stages:
-        print("\n=== WATCHTOWER — what is on fire ===")
+        print("\n=== WATCHTOWER, what is on fire ===")
         r = await run_stage(watchtower(), WATCHTOWER_TASK, WatchtowerReport)
         record.stages.append(r); watch(r)
         if not r.ok:
@@ -173,7 +173,7 @@ async def main(stages):
         if not wt or not wt.ok:
             print("\ndiagnostician skipped: no valid watchtower report")
             return record
-        print("\n=== DIAGNOSTICIAN — why ===")
+        print("\n=== DIAGNOSTICIAN, why ===")
         r = await run_stage(diagnostician(), diagnostician_task(wt.output), Diagnosis)
         record.stages.append(r); watch(r)
         if not r.ok:
@@ -201,7 +201,7 @@ async def main(stages):
             print("\nforecaster skipped: no valid diagnosis")
             return record
         deadline = published_review_deadline("SH042")
-        print(f"\n=== IMPACT FORECASTER — what it costs (review: {deadline}) ===")
+        print(f"\n=== IMPACT FORECASTER, what it costs (review: {deadline}) ===")
         task = (
             "Forecast the production impact of this diagnosis. The client review deadline "
             f"is {deadline}. Measure the frames remaining and both the current and the "
@@ -232,7 +232,7 @@ async def main(stages):
         if not fc or not fc.ok:
             print("\nplanner skipped: no valid forecast")
             return record
-        print("\n=== REMEDIATION PLANNER — proposes, cannot write ===")
+        print("\n=== REMEDIATION PLANNER, proposes, cannot write ===")
         task = (
             "Propose the fix and the write-back for a human to approve.\n\n"
             f"DIAGNOSIS:\n{dx.output.model_dump_json(indent=2)}\n\n"
@@ -247,7 +247,7 @@ async def main(stages):
         print(f"  {len(r.tool_calls)} tool calls, {r.seconds:.1f}s")
         show("REAL FIX", out.fix_recommendation)
         show("risk if ignored", out.risk_if_ignored)
-        print("   proposed writes — NOTHING HAS HAPPENED YET:")
+        print("   proposed writes, NOTHING HAS HAPPENED YET:")
         for i, w in enumerate(out.proposed_writes):
             print(f"      [{i}] {w.action}: {w.title}")
             print(f"          tool={w.tool}  reversible={w.reversible}")
@@ -263,7 +263,7 @@ async def main(stages):
             approved=list(range(len(pl.output.proposed_writes))),
             note="approved via CLI --execute",
         )
-        print(f"\n=== REMEDIATION EXECUTOR — {len(approval.approved)} approved write(s) ===")
+        print(f"\n=== REMEDIATION EXECUTOR, {len(approval.approved)} approved write(s) ===")
         from .verify import snapshot
         before = snapshot()          # must be taken BEFORE anything mutates
         r = await execute_approved_writes(pl.output, approval)

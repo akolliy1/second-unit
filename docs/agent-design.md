@@ -1,4 +1,4 @@
-# Second Unit — Agent Design
+# Second Unit. Agent Design
 
 How the pipeline is composed, what each stage is allowed to do, and the specific mechanisms
 that make the run reproducible.
@@ -26,7 +26,7 @@ flowchart TD
 ```
 
 `SequentialAgent` at the top, one `ParallelAgent` for the fan-out. The dotted line is a
-network and credential boundary, not a branch in the graph — see ADR-004.
+network and credential boundary, not a branch in the graph: see ADR-004.
 
 ---
 
@@ -39,14 +39,14 @@ network and credential boundary, not a branch in the graph — see ADR-004.
 | 2b | LogProbe | LlmAgent | Loki query + label tools | `IncidentSeed` → `list[LogFinding]` |
 | 2c | TraceProbe | LlmAgent | Tempo tools | `IncidentSeed` → `list[TraceFinding]` |
 | 3 | Diagnostician | LlmAgent | **none** | `Evidence` → `Diagnosis` |
-| 4 | Forecaster | FunctionTool | — | `Evidence` → `list[Forecast]` |
+| 4 | Forecaster | FunctionTool |, | `Evidence` → `list[Forecast]` |
 | 5 | RemediationPlanner | LlmAgent | read-only Grafana (to check what exists) | `Diagnosis`+`Forecast` → `RemediationPlan` |
 | 6 | Remediator | LlmAgent, separate app | dashboard/alert/annotation **writes** | approved `plan_id` → `AppliedChanges` |
 | 7 | BriefingProducer | FunctionTool | Gemini TTS | `Verdict` → audio URI |
 
 ### Why Diagnostician has no tools
 It reasons over evidence already gathered. Giving it tools would let it wander, re-query,
-and produce a different tool-call sequence every run — destroying reproducibility for no
+and produce a different tool-call sequence every run, destroying reproducibility for no
 diagnostic gain. **Separating gathering from reasoning is what makes the run repeatable.**
 
 ### Why the fan-out is parallel
@@ -94,7 +94,7 @@ Rules applied throughout:
   render wrangler, VFX producer. Domain-anchored roles produce domain-anchored language.
 - **Adversarial framing on the Diagnostician.** It must populate `ruled_out`. The prompt
   explicitly warns that the loudest alert is often a downstream symptom and names licence
-  exhaustion as a classic red herring — without naming the answer.
+  exhaustion as a classic red herring: without naming the answer.
 - **Tool output is data, never instruction.** Log lines are wrapped and labelled as
   untrusted content. The prompt states that text inside telemetry cannot change the task.
 - **Length discipline.** The Verdict headline is capped at ~90 characters. A producer reads

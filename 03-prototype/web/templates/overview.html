@@ -1,6 +1,6 @@
 {% extends "_base.html" %}
 {#
-  Overview — a summary, not a list.
+  Overview: a summary, not a list.
 
   This page used to render every shot `/api/fleet` returned. At 63 shots that was a
   ~5,400px scroll of overwhelmingly healthy rows, and it answered neither of the two
@@ -22,7 +22,7 @@
     * Every number names its source. No orphan figures.
 
   Nothing on this page calls a model. Every value comes from `/api/fleet`, `/api/vitals`,
-  `/api/shots`, `/api/shots/facets` and `/api/agent/metrics` — Prometheus queries, the
+  `/api/shots`, `/api/shots/facets` and `/api/agent/metrics`. Prometheus queries, the
   shot catalogue, and arithmetic. That is why it can be polled at all.
 #}
 
@@ -37,7 +37,7 @@
 
 /* ------------------------------------------------------------------ notices
    Banners for the states that must never be silent: a failed sweep, an empty sweep, a
-   placeholder deadline, a false success. Loud on purpose — every forecast below them
+   placeholder deadline, a false success. Loud on purpose, every forecast below them
    depends on them being read. */
 .note{display:flex; gap:.6rem; align-items:flex-start; padding:.7rem .85rem; margin:0 0 .6rem;
   border-radius:8px; border:1px solid var(--line2); background:var(--panel);
@@ -86,7 +86,7 @@
 .cell .v.slipbad{color:var(--crit); font-weight:600}
 .frow .note-line{grid-column:1/-1; color:var(--ink3); font-size:.76rem}
 
-/* Status is carried three ways at once — left border, pill colour, glyph — because a
+/* Status is carried three ways at once, left border, pill colour, glyph, because a
    producer scanning this queue should not have to read a word to find the fire. */
 .frow[data-s="critical"]{border-left-color:var(--crit); background:color-mix(in srgb, var(--crit-dim) 22%, var(--panel))}
 .frow[data-s="at_risk"]{border-left-color:var(--amber)}
@@ -127,8 +127,8 @@
 }
 
 /* ---------------------------------------------------------- all-clear card
-   The state a mid-repair judge lands in. It has to carry three facts — how many shots are
-   watched, that they are all clear, and when the next fault arrives — or a calm farm reads
+   The state a mid-repair judge lands in. It has to carry three facts, how many shots are
+   watched, that they are all clear, and when the next fault arrives, or a calm farm reads
    as a broken page. */
 .clear{border-left:4px solid var(--ok)}
 .clear h3{margin:.45rem 0 .3rem; font-size:1.12rem; letter-spacing:-.01em}
@@ -169,7 +169,7 @@
    Why not re-render on the persona event: the framings differ in wording, not in facts, so
    a JS re-render buys nothing and costs a full DOM replacement of the lead card every time
    the chip changes. Doing it in CSS also makes the guarantee structural rather than a thing
-   a future edit can forget — a Producer physically cannot be shown the PromQL block,
+   a future edit can forget, a Producer physically cannot be shown the PromQL block,
    because it is not in their frame. */
 .pframe,.pframei{display:none}
 html[data-persona="td"] .pframe[data-p="td"],
@@ -199,7 +199,7 @@ html:not([data-persona="td"]):not([data-persona="supervisor"]):not([data-persona
 .tile .big .n.na{font-size:1rem; color:var(--ink3); font-family:var(--sans)}
 .tile .body{flex:1 1 auto; min-width:0}
 /* Sub-figures: label left, value right, monospace so columns of digits line up. Capped by
-   construction — four rows per tile, never a list. */
+   construction, four rows per tile, never a list. */
 .mrows{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:.28rem}
 .mrows li{display:flex; align-items:baseline; gap:.6rem; font-size:.82rem; min-width:0}
 .mrows .l{color:var(--ink2); min-width:0; overflow-wrap:anywhere}
@@ -312,9 +312,9 @@ html:not([data-persona="td"]):not([data-persona="supervisor"]):not([data-persona
 
     <div class="card tile" id="tileSlate">
       <h3>Slate</h3>
-      <p class="lede">The catalogue — every shot the production has ingested, not just the
+      <p class="lede">The catalogue, every shot the production has ingested, not just the
         ones rendering now.</p>
-      <div class="big"><span class="n" id="slTotal">—</span><span class="u">shots total</span></div>
+      <div class="big"><span class="n" id="slTotal">, </span><span class="u">shots total</span></div>
       <div class="body">
         <ul class="mrows" id="slRows">
           <li><span class="l">reading the catalogue…</span></li>
@@ -328,7 +328,7 @@ html:not([data-persona="td"]):not([data-persona="supervisor"]):not([data-persona
       <h3>Farm</h3>
       <p class="lede">The render farm right now: what is being measured, how fast it is
         going, and what is broken.</p>
-      <div class="big"><span class="n" id="fmWatched">—</span><span class="u">shots with live telemetry</span></div>
+      <div class="big"><span class="n" id="fmWatched">, </span><span class="u">shots with live telemetry</span></div>
       <div class="body">
         <ul class="mrows" id="fmRows">
           <li><span class="l">reading vitals…</span></li>
@@ -353,7 +353,7 @@ html:not([data-persona="td"]):not([data-persona="supervisor"]):not([data-persona
       <h3>Agent</h3>
       <p class="lede">What the agent did, and how much of what it said it wrote actually
         turned up in the stack.</p>
-      <div class="big"><span class="n" id="agCalls">—</span><span class="u" id="agCallsU">tool calls</span></div>
+      <div class="big"><span class="n" id="agCalls">, </span><span class="u" id="agCallsU">tool calls</span></div>
       <div class="body" id="agBody">
         <span class="skel">reading agent telemetry…</span>
       </div>
@@ -371,11 +371,11 @@ html:not([data-persona="td"]):not([data-persona="supervisor"]):not([data-persona
   </div>
   <div class="card" id="scenCard">
     <div class="scen">
-      <div><span class="k">Cycle phase</span><span class="v" id="scPhase">—</span>
+      <div><span class="k">Cycle phase</span><span class="v" id="scPhase">, </span>
         <span class="d" id="scPhaseD">from /api/vitals cycle_phase</span></div>
-      <div><span class="k">Minute in loop</span><span class="v" id="scMin">—</span>
+      <div><span class="k">Minute in loop</span><span class="v" id="scMin">, </span>
         <span class="d">of ~240, from /api/vitals cycle_minute</span></div>
-      <div><span class="k">Next fault injected</span><span class="v" id="scNext">—</span>
+      <div><span class="k">Next fault injected</span><span class="v" id="scNext">, </span>
         <span class="d" id="scNextD">derived from the loop position</span></div>
     </div>
     <div class="track" id="scTrack" hidden><i id="scFill"></i><b id="scMark"></b></div>
@@ -387,8 +387,8 @@ html:not([data-persona="td"]):not([data-persona="supervisor"]):not([data-persona
 
 {% block docs %}
 <h3>Overview</h3>
-<p>A summary page, deliberately. It answers two questions — <b>what needs a human</b>, and
-<b>what is the state of the platform</b> — and links to the page that owns each detail. It
+<p>A summary page, deliberately. It answers two questions, <b>what needs a human</b>, and
+<b>what is the state of the platform</b>, and links to the page that owns each detail. It
 does not list the farm: <code>/shots</code> does that, with paging, filters and sorting
 built for it.</p>
 
@@ -398,11 +398,11 @@ passes that was roughly 5,400px of scroll, almost all of it healthy rows, and it
 one thing that needed attention harder to find rather than easier. Caps here are a
 correctness property, not a layout preference:</p>
 <ul>
-  <li><b>Attention</b> — at most <b>5</b> exception rows, worst first, plus at most <b>3</b>
+  <li><b>Attention</b>, at most <b>5</b> exception rows, worst first, plus at most <b>3</b>
       unmeasurable ones. Anything beyond that becomes "+N more →".</li>
-  <li><b>Departments</b> — one stacked bar and its legend; six departments, not six hundred
+  <li><b>Departments</b>, one stacked bar and its legend; six departments, not six hundred
       rows.</li>
-  <li><b>Everything else</b> — a count and a link. No section grows with the farm.</li>
+  <li><b>Everything else</b>, a count and a link. No section grows with the farm.</li>
 </ul>
 <p class="dnote">Every capped list prints what it is hiding and links to the full view. A cap
 that does not say what it dropped is a lie by omission, and the count comes from the API's
@@ -410,27 +410,27 @@ own total rather than from the rows we chose to draw.</p>
 
 <h4>Attention</h4>
 <p><code>GET /api/fleet</code>, every 20s. The sweep is plain Python over two instant
-queries — <code>shot_frames_remaining</code> and
-<code>sum by (shot) (rate(render_frames_completed_total[15m])) * 60</code> — then division:
+queries, <code>shot_frames_remaining</code> and
+<code>sum by (shot) (rate(render_frames_completed_total[15m])) * 60</code>, then division:
 <code>frames ÷ rate</code> gives an ETA, and the ETA minus the published review deadline
 gives the slip. No language model is in that path, so this section cannot hallucinate a
 shot, invent an ETA, or disagree with itself between refreshes. The server already sorts
 worst-first, so the cap takes the five worst rather than the first five it happened to
 receive.</p>
 <ul>
-  <li><b>critical</b> — forecast more than 1h past the deadline</li>
-  <li><b>at risk</b> — forecast past the deadline at all</li>
-  <li><b>unknown</b> — frames remain but the rate is unusable: nothing completed in the last
+  <li><b>critical</b>, forecast more than 1h past the deadline</li>
+  <li><b>at risk</b>, forecast past the deadline at all</li>
+  <li><b>unknown</b>, frames remain but the rate is unusable: nothing completed in the last
       15m, or an implausible rate from a counter reset. Shown with its
       <code>note</code>, never folded into "on track" and never hidden.</li>
-  <li><b>on track / done</b> — counted in the all-clear line, not listed. Their detail lives
+  <li><b>on track / done</b>, counted in the all-clear line, not listed. Their detail lives
       on <code>/shots?tab=forecast</code>.</li>
 </ul>
 <p class="dnote">An empty section is never rendered as calm. A failed sweep prints
 <code>fleet.last_error</code>; a sweep that succeeded and returned nothing says so and
 explains that for this farm it means <code>shot_frames_remaining</code> has no series, i.e.
 the seeder stopped. When there are genuinely no exceptions, the all-clear states how many
-shots are being watched and when the next fault lands — a calm farm must not look like a
+shots are being watched and when the next fault lands, a calm farm must not look like a
 broken page.</p>
 <p class="dnote">If the review deadline could not be read from
 <code>shot_review_deadline_seconds</code>, the API says so via
@@ -439,7 +439,7 @@ and slip on the page is then measured against a made-up deadline and none of the
 schedule facts.</p>
 
 <h4>Active incident</h4>
-<p>The worst exception from the same <code>/api/fleet</code> payload — no second data
+<p>The worst exception from the same <code>/api/fleet</code> payload, no second data
 source, so the card and the attention list cannot contradict each other. All three framings
 are rendered once and selected in CSS from <code>html[data-persona]</code>: a Producer gets
 the schedule consequence in plain language and no metric names, a Supervisor gets the shot
@@ -449,35 +449,35 @@ is identical; only the wording differs.</p>
 <h4>Platform at a glance</h4>
 <p>Four tiles, each with its source printed on it:</p>
 <ul>
-  <li><b>Slate</b> — <code>GET /api/shots</code> → <code>summary</code>: total,
+  <li><b>Slate</b>, <code>GET /api/shots</code> → <code>summary</code>: total,
       <code>ingested_today</code>, and <code>by_state</code> (rendering vs complete). The
-      catalogue, not Prometheus — it is hundreds of shots and grows daily.</li>
-  <li><b>Farm</b> — <code>GET /api/fleet</code> for the number of shots with live telemetry,
+      catalogue, not Prometheus, it is hundreds of shots and grows daily.</li>
+  <li><b>Farm</b>, <code>GET /api/fleet</code> for the number of shots with live telemetry,
       then <code>GET /api/vitals</code> for
       <code>sum(rate(render_frames_completed_total[15m])) * 60</code>,
       <code>sum by (node) (increase(render_node_gpu_ecc_errors_total[30m])) &gt; 0</code>
       and <code>render_queue_depth{queue="lighting"}</code> (~18 is this farm's healthy
       depth; 40+ means frames are piling up faster than the pool clears them).</li>
-  <li><b>Departments</b> — <code>GET /api/shots/facets</code> → <code>department</code>,
+  <li><b>Departments</b>, <code>GET /api/shots/facets</code> → <code>department</code>,
       drawn as a stacked bar of divs. No chart library: six proportions do not justify a
       dependency, and a div cannot fail to load.</li>
-  <li><b>Agent</b> — <code>GET /api/agent/metrics</code>: <code>tool_calls</code> summed
+  <li><b>Agent</b>, <code>GET /api/agent/metrics</code>: <code>tool_calls</code> summed
       across stages, and the <code>write_claims</code> breakdown.</li>
 </ul>
-<p>The write-claim outcomes are read back out of the same Prometheus the farm writes to —
-not from memory in this process — so these are the numbers in Grafana and the page cannot
+<p>The write-claim outcomes are read back out of the same Prometheus the farm writes to, 
+not from memory in this process, so these are the numbers in Grafana and the page cannot
 flatter the agent:</p>
 <ul>
-  <li><b>confirmed</b> — the agent claimed a write and verification found it in the stack</li>
-  <li><b>honest failure</b> — the write failed and the agent said it failed</li>
-  <li><b>unchecked</b> — no independent check was possible for that item</li>
-  <li><b>false success</b> — the agent <em>reported</em> a write that verification could not
+  <li><b>confirmed</b>, the agent claimed a write and verification found it in the stack</li>
+  <li><b>honest failure</b>, the write failed and the agent said it failed</li>
+  <li><b>unchecked</b>, no independent check was possible for that item</li>
+  <li><b>false success</b>, the agent <em>reported</em> a write that verification could not
       find. The one number worth paging on, so a non-zero value gets a banner above the
       tiles as well as the tile treatment.</li>
 </ul>
 <p class="dnote">These are instant queries. If the agent has not run inside Prometheus's
 retention window the series are empty, and the tile says "no run in the window" rather than
-showing zeroes — zero false successes and no data are not the same claim.</p>
+showing zeroes, zero false successes and no data are not the same claim.</p>
 
 <h4>Scenario state</h4>
 <p><b>Cycle phase</b> is derived from the deadline metric, not from a wall clock: the demo
@@ -489,11 +489,11 @@ product is broken.</p>
 <h4>Freshness and polling</h4>
 <p><code>/api/fleet</code> and <code>/api/vitals</code> refresh every 20 seconds and no
 faster; each hits Prometheus through Grafana's datasource proxy. The slate, facets and agent
-summaries refresh every 60s — the catalogue changes once a day and the agent's numbers only
+summaries refresh every 60s, the catalogue changes once a day and the agent's numbers only
 when a run happens. Polling pauses while the tab is hidden and resumes on return. A section
 is only rewritten when its rendered output actually changed, so a poll cannot reflow the
 page under the reader's cursor. The dot in the top bar is green after a clean sweep, amber
-when something is degraded or a deadline is a placeholder, and red when a call failed — with
+when something is degraded or a deadline is a placeholder, and red when a call failed, with
 the reason on the page, never only in the console.</p>
 {% endblock %}
 
@@ -501,7 +501,7 @@ the reason on the page, never only in the console.</p>
 <script>
 "use strict";
 /* ==========================================================================
-   Overview client. Vanilla, no build, no framework — same constraint as the rest of
+   Overview client. Vanilla, no build, no framework, same constraint as the rest of
    the prototype. Five fetches on two clocks, five render functions.
 
    Every value that reaches the DOM goes through esc() from the base layout: it arrives
@@ -534,20 +534,20 @@ const S = {fleet:null, fleetErr:null, vitals:null, vitalsErr:null,
 const num = (n) => Number(n).toLocaleString("en-US");
 function fmtHours(h){
   /* Slip is signed hours as a float. Producers read "2h 18m", not "2.31". */
-  if (h === null || h === undefined || isNaN(h)) return "—";
+  if (h === null || h === undefined || isNaN(h)) return ", ";
   const mins = Math.round(Math.abs(h) * 60);
   const s = mins >= 60 ? Math.floor(mins/60) + "h " + String(mins%60).padStart(2,"0") + "m"
                        : mins + "m";
   return (h < 0 ? "-" : "") + s;
 }
 function fmtClock(iso){
-  if (!iso) return "—";
+  if (!iso) return ", ";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return String(iso);   // never swallow a shape we did not expect
   return d.toLocaleString([], {weekday:"short", hour:"2-digit", minute:"2-digit"});
 }
 function fmtMins(m){
-  if (m === null || m === undefined || isNaN(m)) return "—";
+  if (m === null || m === undefined || isNaN(m)) return ", ";
   m = Math.round(m);
   return m >= 60 ? Math.floor(m/60) + "h " + String(m%60).padStart(2,"0") + "m" : m + " min";
 }
@@ -600,9 +600,9 @@ function frow(s){
   const slipBad = typeof s.slip_hours === "number" && s.slip_hours > 0;
   const cells = [
     ["frames left", s.frames_remaining === null || s.frames_remaining === undefined
-      ? "—" : num(s.frames_remaining), ""],
+      ? ", ": num(s.frames_remaining), ""],
     ["rate", (typeof s.rate_per_min === "number" && s.rate_per_min > 0)
-      ? s.rate_per_min.toFixed(1) + " fr/min" : "—", ""],
+      ? s.rate_per_min.toFixed(1) + " fr/min": ", ", ""],
     ["eta", fmtClock(s.eta), ""],
     ["slip", fmtHours(s.slip_hours), slipBad ? "slipbad" : ""],
   ].map(([k,v,cls]) =>
@@ -610,7 +610,7 @@ function frow(s){
     esc(v) + "</span></span>").join("");
   return '<div class="frow" data-s="' + st + '">' +
     '<span class="who"><span class="shot">' + esc(s.shot) + '</span>' +
-    '<span class="dept">' + esc(s.department || "—") + "</span></span>" +
+    '<span class="dept">' + esc(s.department || ", ") + "</span></span>" +
     pill(st) + cells +
     (s.note ? '<span class="note-line">' + esc(s.note) + "</span>" : "") +
     "</div>";
@@ -628,7 +628,7 @@ function renderAttention(){
       "<b>Fleet sweep failed.</b> " + esc(S.fleetErr) +
       "<br>Nothing on this page that depends on the farm is a current reading."));
     setHTML(body, '<div class="card"><p class="dim" style="margin:0">No forecast is being ' +
-      'shown, because none could be computed. This is not "nothing needs you" — it is ' +
+      'shown, because none could be computed. This is not "nothing needs you", it is ' +
       '"we cannot tell you". The recorded run on <a href="/investigation">Investigation</a> ' +
       'is unaffected.</p></div>');
     return;
@@ -656,7 +656,7 @@ function renderAttention(){
   }
   if (!b.total && !f.error){
     head += note("bad","✗",
-      "<b>No shots in flight.</b> The sweep succeeded and returned nothing — for this farm " +
+      "<b>No shots in flight.</b> The sweep succeeded and returned nothing, for this farm " +
       "that means <code>shot_frames_remaining</code> has no series, i.e. the seeder is not " +
       "running. This is not a farm with no work in it.");
   }
@@ -698,7 +698,7 @@ function allClear(b){
     '<h3>Nothing is forecast to miss the review deadline</h3>' +
     "<p>All " + num(b.total) + " shot" + (b.total>1?"s":"") + " with live telemetry are " +
       "forecast to land before the " + dl + " review" +
-      (f.deadline_is_placeholder ? " — which is a placeholder, see above" : "") + ". " +
+      (f.deadline_is_placeholder ? ", which is a placeholder, see above": "") + ". " +
       esc(c.sentence) + "</p>" +
     (faulty.length
       ? "<p>" + esc(faulty.join(", ")) + " " + (faulty.length>1 ? "are" : "is") +
@@ -727,7 +727,7 @@ function faultyNodes(){
    One source (the fleet payload) rendered three ways, all three emitted and selected in
    CSS off html[data-persona]. The facts are identical; what changes is which of them a
    given reader can act on. A producer cannot act on a PromQL expression, so their frame
-   does not contain one — that is the whole thesis of the persona switch, and doing it
+   does not contain one, that is the whole thesis of the persona switch, and doing it
    structurally means a later edit cannot leak a query into the wrong frame. */
 function worstException(){
   const b = buckets();
@@ -771,7 +771,7 @@ function renderIncident(){
 
   if (!s){
     /* No exception. This is the state a mid-repair judge lands in, so the card explains the
-       loop rather than just saying "all good" — a demo that looks idle reads as broken. */
+       loop rather than just saying "all good", a demo that looks idle reads as broken. */
     const c = cyclePhrase(v);
     card.dataset.sev = "clear";
     p.dataset.s = "on_track"; setText(p, "● no exception");
@@ -779,13 +779,13 @@ function renderIncident(){
     const facts = factList([
       ["Shots in flight", b.total + " (" + b.done + " done, " + b.on_track + " on track" +
                           (b.unk.length ? ", " + b.unk.length + " unmeasurable" : "") + ")"],
-      ["Review deadline", (dl || "—") + (placeholder ? " (placeholder)" : "")],
-      ["Throughput now", v.throughput_now == null ? "—"
+      ["Review deadline", (dl || ", ") + (placeholder ? " (placeholder)": "")],
+      ["Throughput now", v.throughput_now == null ? ", "
         : v.throughput_now.toFixed(1) + " fr/min"],
       ["Nodes with faults", faulty.length ? faulty.join(", ") : "none in the last 30m"],
     ]);
     const pFacts = factList([
-      ["Shots being watched", b.total + " — none late"],
+      ["Shots being watched", b.total + ", none late"],
       ["Review is at", fmtClock(dl) + (placeholder ? " (placeholder, not a real date)" : "")],
       ["Next disruption", c.nextText],
       ["Anything to approve", "nothing right now"],
@@ -800,7 +800,7 @@ function renderIncident(){
       frame("supervisor", "Every pass is clear of its review deadline",
         c.sentence + " " + b.on_track + " of " + b.total + " passes are still rendering to " +
         "a forecast inside the deadline" +
-        (b.unk.length ? ", and " + b.unk.length + " cannot be forecast at all — listed above " +
+        (b.unk.length ? ", and " + b.unk.length + " cannot be forecast at all, listed above " +
                         "with the reason." : ".") ,
         facts) +
       frame("producer", "Nothing needs you right now",
@@ -815,7 +815,7 @@ function renderIncident(){
   card.dataset.sev = s.status === "critical" ? "critical" : "at_risk";
   p.dataset.s = s.status;
   setText(p, STATUS_GLYPH[s.status] + " " + STATUS_TEXT[s.status]);
-  setText(meta, s.shot + " · " + (s.department || "—") +
+  setText(meta, s.shot + " · " + (s.department || ", ") +
     (b.exc.length > 1 ? " · worst of " + b.exc.length + " exceptions" : "") +
     (placeholder ? " · deadline is a placeholder" : ""));
   setText(btn, s.shot === RECORDED_SHOT ? "Investigate " + s.shot : "Open investigation");
@@ -835,7 +835,7 @@ function renderIncident(){
     /* --- Pipeline TD: identifiers, rates, the exact queries. */
     frame("td",
       s.shot + " " + (s.department || "") + ": ETA " + fmtClock(s.eta) +
-        " vs deadline " + fmtClock(dl) + " — slip " + slip,
+        " vs deadline " + fmtClock(dl) + ", slip " + slip,
       num(s.frames_remaining || 0) + " frames remaining at " + rate +
         ". Farm throughput " +
         (v.throughput_now == null ? "unread" : v.throughput_now.toFixed(1) + " fr/min") +
@@ -843,10 +843,10 @@ function renderIncident(){
         ". " + nodeLine + "." + others,
       factList([
         ["Status", STATUS_TEXT[s.status] || s.status],
-        ["Frames / rate", (s.frames_remaining != null ? num(s.frames_remaining) : "—") +
+        ["Frames / rate", (s.frames_remaining != null ? num(s.frames_remaining): ", ") +
                           " @ " + rate],
-        ["ETA / deadline", (s.eta || "—") + " / " + (dl || "—")],
-        ["Slip (hours)", s.slip_hours == null ? "—" : String(s.slip_hours)],
+        ["ETA / deadline", (s.eta || ", ") + " / " + (dl || ", ")],
+        ["Slip (hours)", s.slip_hours == null ? ", ": String(s.slip_hours)],
         ["ECC in 30m", "sum by (node) (increase(render_node_gpu_ecc_errors_total[30m])) > 0 → " +
                        (faulty.length ? faulty.join(", ") : "∅")],
         ["Rate query", "sum by (shot) (rate(render_frames_completed_total[15m])) * 60"],
@@ -858,13 +858,13 @@ function renderIncident(){
       num(s.frames_remaining || 0) + " frames still to render at " + rate +
         ", forecast " + fmtClock(s.eta) + " against a " + fmtClock(dl) + " review. " +
         (faulty.length
-          ? "One node is the cause — " + nodeLine + " — so this is not a problem with the " +
+          ? "One node is the cause, " + nodeLine + ", so this is not a problem with the " +
             "shot or the lighting setup."
           : "No single node is faulted, so this is a capacity shortfall rather than one " +
             "broken machine.") + others,
       factList([
-        ["Shot / department", s.shot + " · " + (s.department || "—")],
-        ["Frames remaining", s.frames_remaining != null ? num(s.frames_remaining) : "—"],
+        ["Shot / department", s.shot + " · " + (s.department || ", ")],
+        ["Frames remaining", s.frames_remaining != null ? num(s.frames_remaining): ", "],
         ["Completion rate", rate],
         ["ETA vs deadline", fmtClock(s.eta) + " vs " + fmtClock(dl)],
         ["Slip", slip],
@@ -882,10 +882,10 @@ function renderIncident(){
         (b.exc.length > 1 ? " " + (b.exc.length - 1) + " other shot" +
           (b.exc.length > 2 ? "s are" : " is") + " late too." : ""),
       factList([
-        ["Review is at", fmtClock(dl) + (placeholder ? " — placeholder, not a real date" : "")],
+        ["Review is at", fmtClock(dl) + (placeholder ? ", placeholder, not a real date": "")],
         ["Forecast delivery", fmtClock(s.eta)],
         ["Late by", slip],
-        ["Work left", (s.frames_remaining != null ? num(s.frames_remaining) + " frames" : "—")],
+        ["Work left", (s.frames_remaining != null ? num(s.frames_remaining) + " frames": ", ")],
       ])));
 
   /* The hint is one line and persona-shaped, but it carries no metric names in any frame,
@@ -914,10 +914,10 @@ function renderSlate(){
   const st = sum.by_state || {};
   big.className = "n"; setText(big, num(sum.total || 0));
   setHTML(rows,
-    mrow("ingested today", sum.ingested_today == null ? "—" : num(sum.ingested_today)) +
-    mrow("rendering", st.rendering == null ? "—" : num(st.rendering)) +
-    mrow("complete", st.complete == null ? "—" : num(st.complete), "ok") +
-    mrow("ingesting for", (sum.days_ingesting == null ? "—" : sum.days_ingesting + " days") +
+    mrow("ingested today", sum.ingested_today == null ? ", ": num(sum.ingested_today)) +
+    mrow("rendering", st.rendering == null ? ", ": num(st.rendering)) +
+    mrow("complete", st.complete == null ? ", ": num(st.complete), "ok") +
+    mrow("ingesting for", (sum.days_ingesting == null ? ", ": sum.days_ingesting + " days") +
          (sum.per_day ? " @ " + sum.per_day + "/day" : "")));
 }
 
@@ -1061,7 +1061,7 @@ function renderAgent(){
     const cls = key === "false_success"
       ? (Number(n || 0) > 0 ? "claim alarm" : "claim zero")
       : "claim";
-    return '<div class="' + cls + '"><span class="cn">' + (has ? num(Math.round(n)) : "—") +
+    return '<div class="' + cls + '"><span class="cn">' + (has ? num(Math.round(n)): ", ") +
       '</span><span class="cl">' + esc(label) + "</span></div>";
   }).join("");
 
@@ -1074,7 +1074,7 @@ function renderAgent(){
         : "No false successes: every claimed write was found in the stack or reported as " +
           "failed.") +
       (other.length ? " Unrecognised outcome label(s): " + esc(other.join(", ")) +
-                      " — shown rather than discarded." : "") +
+                      ", shown rather than discarded.": "") +
     "</p>");
 
   /* false_success is the number this project earned the right to show. Non-zero gets a

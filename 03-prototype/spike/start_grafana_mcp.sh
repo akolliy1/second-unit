@@ -25,7 +25,7 @@ if [ -x "$BIN" ]; then
     --server-auth-token "${MCP_GRAFANA_SERVER_TOKEN}"
 fi
 
-echo "(no native binary at $BIN — falling back to Docker; needs the daemon running)"
+echo "(no native binary at $BIN, falling back to Docker; needs the daemon running)"
 docker run --rm -i -p 8000:8000 \
   -e GRAFANA_URL="${GRAFANA_URL}" \
   -e GRAFANA_SERVICE_ACCOUNT_TOKEN="${GRAFANA_SERVICE_ACCOUNT_TOKEN}" \

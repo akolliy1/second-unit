@@ -133,7 +133,7 @@ def run(args):
             farm.cyclic = True
             print(f"loop mode: fault at t+0, repair at t+{farm.REPAIR_AT}m, "
                   f"restart every {farm.CYCLE_MINUTES}m")
-        print(f"live mode, starting at t{minute:+d}m — ctrl-c to stop")
+        print(f"live mode, starting at t{minute:+d}m, ctrl-c to stop")
         while True:
             ts = int(time.time() * 1000)
             series, logs = farm.tick(minute, ts)

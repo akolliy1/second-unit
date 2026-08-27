@@ -1,6 +1,6 @@
 """Ask: a scoped question box, not a chatbot.
 
-The objection to free-form chat was never latency or difficulty — it was that an
+The objection to free-form chat was never latency or difficulty, it was that an
 open-ended box invites a question the system cannot answer, produces a confident
 non-answer, and that becomes the lasting impression of the whole product. Two things fix
 that, and neither is a longer prompt:
@@ -12,7 +12,7 @@ that, and neither is a longer prompt:
    from wandering, and wandering is how you get a slow wrong answer.
 
 The answer streams its tool calls into the same renderer the pipeline uses, so the wait is
-legible rather than dead air — which is the same reason the stage stream exists.
+legible rather than dead air: which is the same reason the stage stream exists.
 """
 import os
 from typing import Optional
@@ -25,7 +25,7 @@ from .stages import FARM_CONTEXT, FLASH
 from .tools import forecast_after_remediation, forecast_delivery, idle_cost
 
 #: Questions the console offers as chips. Every one is answerable from the farm's telemetry,
-#: and each exercises a different capability — so the demo path cannot land on a dud.
+#: and each exercises a different capability, so the demo path cannot land on a dud.
 SUGGESTED = [
     "Does SH041 make its review?",
     "What if we drain render-07 right now?",
@@ -45,20 +45,20 @@ def router() -> LlmAgent:
 You gate a question box on an observability console for ONE synthetic VFX render farm. Decide
 only whether the question can be answered from that farm's telemetry. Do not answer it.
 
-IN SCOPE — the farm's own state and consequences:
+IN SCOPE, the farm's own state and consequences:
   render nodes (12, one faulty), GPU temperature and ECC errors, frames completed/failed,
   queue depth by department, per-shot frames remaining and completion rate, review deadlines
   and whether a shot makes them, what a fix would change, crew/idle-time consequences,
   the asset pipeline's logs, the render scheduler's logs.
 
-OUT OF SCOPE — anything else. Weather, general knowledge, other systems, other companies,
+OUT OF SCOPE, anything else. Weather, general knowledge, other systems, other companies,
 code questions, the model itself, anything about real production infrastructure, and anything
 needing data this farm does not emit (costs in currency other than idle time, artist names,
 client identities, storage capacity, licence servers).
 
 Be decisive. If a question is partly answerable, call it in scope and let the answering stage
 state the limits. If it is not, `reason` must say plainly what this system can and cannot
-see — one sentence, no apology, no speculation — and `suggestion` must offer the nearest
+see, one sentence, no apology, no speculation, and `suggestion` must offer the nearest
 question that IS answerable here.
 """,
         output_schema=AskRoute,
@@ -81,7 +81,7 @@ Rules:
   budget and a wandering search is a slow wrong answer.
 - For anything about deadlines or "would the fix work", call `forecast_delivery` or
   `forecast_after_remediation` rather than doing arithmetic yourself. Quote what they return.
-  If they refuse your input, re-measure — do not talk past them.
+  If they refuse your input, re-measure: do not talk past them.
 - Every claim carries the tool and the exact query in `evidence`.
 - `caveat` is not optional decoration. If the window is short, a series is missing, or you
   assumed something, say it. An answer that hides its own weakness is worse than one that
@@ -90,7 +90,7 @@ Rules:
   confidence "low". Do not construct a plausible number.
 - NEVER ask the operator a question back. You are given the shot in question, its published
   review deadline and the current fleet state; everything else you can measure. "Which pass
-  did you mean?" is not an answer — if something is genuinely ambiguous, pick the most
+  did you mean?" is not an answer, if something is genuinely ambiguous, pick the most
   likely reading, answer it, and name the assumption in `caveat`.
 """,
         tools=[grafana_toolset(tool_filter=ASK_TOOLS),
@@ -108,7 +108,7 @@ def farm_context(shot: str = "SH042") -> str:
     """Facts the answerer would otherwise have to ask the user for.
 
     Without this, "what if we drain render-07?" came back as "which render pass, and what
-    is its review deadline?" — a technically reasonable question and a useless answer. The
+    is its review deadline?", a technically reasonable question and a useless answer. The
     console knows which shot is selected and the deadline is published as telemetry, so
     handing both over is not a shortcut, it is the difference between an assistant and a
     form. It still measures everything else itself.
@@ -124,7 +124,7 @@ def farm_context(shot: str = "SH042") -> str:
         # Three attempts got here. Using the current degraded rate as the baseline made
         # draining a dead node look harmful. Taking the peak of the last 3 hours returned
         # the degraded rate, because the scenario's healthy lead-in had aged out. Widening
-        # to 12 hours returned 980 frames/min — a counter-reset artefact from the seeder's
+        # to 12 hours returned 980 frames/min, a counter-reset artefact from the seeder's
         # cycle restarts, the same class of nonsense `forecast_delivery` already refuses.
         #
         # History is the wrong source in an environment with counter resets. Capacity is
@@ -157,8 +157,8 @@ def farm_context(shot: str = "SH042") -> str:
         except Exception:  # noqa: BLE001
             pass
         lines.append("The farm has 12 render nodes; 7 are on the lighting pass.")
-    except Exception:  # noqa: BLE001 — context is a help, not a prerequisite
-        lines.append("(live fleet state unavailable — measure what you need yourself)")
+    except Exception:  # noqa: BLE001, context is a help, not a prerequisite
+        lines.append("(live fleet state unavailable, measure what you need yourself)")
     return "\n".join(lines)
 
 
@@ -167,6 +167,6 @@ def answer_task(question: str, shot: str = "SH042",
     ctx = f"\n\nWhat the last investigation found:\n{context}" if context else ""
     return (
         f"Answer this question about the farm:\n\n{question}\n\n"
-        f"Context you already have — do NOT ask the operator for any of it:\n"
+        f"Context you already have, do NOT ask the operator for any of it:\n"
         f"{farm_context(shot)}{ctx}"
     )

@@ -1,7 +1,7 @@
 """The dailies briefing: the investigation, spoken, in sixty seconds.
 
 Why this exists rather than a text summary. A VFX crew's morning is a stand-up, not a
-dashboard review — the supervisor reads the overnight state aloud while people are still
+dashboard review, the supervisor reads the overnight state aloud while people are still
 getting coffee. The whole thesis of Second Unit is that the finding has to arrive in the
 form the recipient already uses, and for a producer at 08:00 that form is *someone telling
 them*. A page they have to open is one more thing they will not open.
@@ -41,7 +41,7 @@ def _auth() -> tuple:
     """Return (token, quota_project).
 
     The quota project is not optional: Text-to-Speech rejects Application Default
-    Credentials outright — `403 ... requires a quota project` — unless the request carries
+    Credentials outright, `403 ... requires a quota project`, unless the request carries
     `x-goog-user-project`. Resolving it from three places in order, because relying on the
     environment alone failed silently in the web process, which never loaded .env, and the
     only symptom was a 403 with a long message nobody reads to the end.
@@ -80,7 +80,7 @@ def _decap(text: str) -> str:
     if not text:
         return text
     first = text.split(" ", 1)[0].strip(",.:;")
-    if len(first) > 1 and first.isupper():        # GPU, ECC, SH042 — leave alone
+    if len(first) > 1 and first.isupper():        # GPU, ECC, SH042, leave alone
         return text
     return text[0].lower() + text[1:]
 
@@ -118,7 +118,7 @@ def compose(forecast, diagnosis, plan=None, *, shot: Optional[str] = None) -> st
     lines.append(
         f"There are {forecast.frames_remaining:,} frames left. The farm is completing "
         f"{forecast.current_rate_per_min:.0f} a minute, down from "
-        f"{forecast.baseline_rate_per_min:.0f} — a {forecast.capacity_loss_pct:.0f} percent "
+        f"{forecast.baseline_rate_per_min:.0f}, a {forecast.capacity_loss_pct:.0f} percent "
         f"drop in capacity.")
 
     # 3. Why, in one sentence, with the jargon softened.
@@ -131,7 +131,7 @@ def compose(forecast, diagnosis, plan=None, *, shot: Optional[str] = None) -> st
     # "The cause is ..." frame produces a double verb. Keep its own capitalisation.
     lines.append(cause if cause.endswith(".") else cause + ".")
 
-    # 4. What was ruled out — the part that earns trust.
+    # 4. What was ruled out: the part that earns trust.
     ruled = [h for h in diagnosis.hypotheses if h.verdict == "ruled_out"]
     if ruled:
         # "including the asset pipeline cache misses are causing the failures" is not a
@@ -165,7 +165,7 @@ def compose(forecast, diagnosis, plan=None, *, shot: Optional[str] = None) -> st
 
 
 def synthesize(script: str, *, voice: str = None, speaking_rate: float = 1.0) -> bytes:
-    """Return MP3 bytes. Raises on failure — the caller decides how to degrade."""
+    """Return MP3 bytes. Raises on failure: the caller decides how to degrade."""
     body = {
         "input": {"text": script},
         "voice": {"languageCode": LANGUAGE, "name": voice or VOICE},
@@ -177,7 +177,7 @@ def synthesize(script: str, *, voice: str = None, speaking_rate: float = 1.0) ->
     token, project = _auth()
     if not project:
         raise RuntimeError(
-            "no quota project resolved — Text-to-Speech refuses ADC without "
+            "no quota project resolved. Text-to-Speech refuses ADC without "
             "x-goog-user-project. Set GOOGLE_CLOUD_PROJECT.")
     r = requests.post(
         TTS_URL, json=body, timeout=60,

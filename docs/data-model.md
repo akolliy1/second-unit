@@ -1,4 +1,4 @@
-# Second Unit — Data Model
+# Second Unit. Data Model
 
 Three layers: the **telemetry** the agent queries, the **domain** it reasons about, and the
 **contracts** that pass between stages. Get these right on paper and the build is mostly
@@ -6,7 +6,7 @@ typing.
 
 ---
 
-## 1. Telemetry layer — what lives in Grafana Cloud
+## 1. Telemetry layer, what lives in Grafana Cloud
 
 ### 1.1 Metrics (Prometheus / Mimir via `remote_write`)
 
@@ -37,7 +37,7 @@ shot/task labels on the four job metrics only; node-level metrics carry node+poo
 nothing else. Stay under ~4k series to leave headroom.
 
 ### 1.2 Logs (Loki push API)
-Stream labels — low cardinality only: `{job="renderfarm", service, pool, level}` where
+Stream labels, low cardinality only: `{job="renderfarm", service, pool, level}` where
 `service` ∈ `render-worker | scheduler | license-server | asset-cache`.
 
 Line format, logfmt so Loki pattern parsers work cleanly:
@@ -64,14 +64,14 @@ and lets the agent show *where* submission time is going, not just that it is sl
 
 ---
 
-## 2. The seeded scenario — and why it has a trap
+## 2. The seeded scenario, and why it has a trap
 
 **Scenario `driver-regression-cascade`:**
 
 1. Nodes `rn-b01..rn-b16` in pool `gpu-b` were updated to driver `555.42.02`.
 2. On heavy volumetric frames the new driver over-allocates VRAM → intermittent `oom`
    failures, **only on pool `gpu-b`, only on high-memory frames**.
-3. The scheduler retries failed frames — back onto the same pool.
+3. The scheduler retries failed frames: back onto the same pool.
 4. Each retry checks out a renderer licence. Retry storm drains
    `license_features_available` to 0.
 5. **Every pool now stalls waiting on licences.** `LicensePoolExhausted` fires loudest.
@@ -83,16 +83,16 @@ visible only by correlating `render_job_failures_total{reason="oom", pool="gpu-b
 `driver_version` in the log lines.
 
 This is worth the effort for three reasons: the diagnosis is genuinely non-trivial, a naive
-single-shot agent gets it wrong, and the demo has a narrative beat — *"the obvious answer is
+single-shot agent gets it wrong, and the demo has a narrative beat, *"the obvious answer is
 wrong, and here's how it knows."* Judges remember that.
 
 Second scenario if time allows: `asset-cache-cold-site` (a site cache flush causing
-cross-region asset pulls). Third: `quiet-day` — nothing wrong, so the agent must correctly
+cross-region asset pulls). Third: `quiet-day`, nothing wrong, so the agent must correctly
 say "nothing is wrong," which is the failure mode most demos never test.
 
 ---
 
-## 3. Domain layer — what the agent reasons about
+## 3. Domain layer, what the agent reasons about
 
 ```python
 Show(id, title, delivery_calendar)
@@ -110,7 +110,7 @@ config; a real deployment reads it from the production tracker.
 
 ---
 
-## 4. Contract layer — typed handoffs between stages
+## 4. Contract layer, typed handoffs between stages
 
 Pydantic models. **These are the API of the pipeline.** Every stage boundary is validated;
 a stage that cannot produce a valid contract fails loudly rather than passing prose along.

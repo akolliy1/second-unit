@@ -7,7 +7,7 @@ when a headless client tries, so your forum question and your README can both be
 precise instead of hand-wavy.
 
 Expected outcome: 401/403 demanding an interactive OAuth 2.1 browser flow. That is a
-FINDING, not a failure — write it in NOTES.md and cite it as the reason your
+FINDING, not a failure, write it in NOTES.md and cite it as the reason your
 architecture bridges through the official OSS server against your Cloud stack.
 """
 import asyncio
@@ -36,7 +36,7 @@ async def main():
                 await asyncio.wait_for(session.initialize(), timeout=30)
                 listed = await asyncio.wait_for(session.list_tools(), timeout=30)
                 print(f"ACCEPTED a static bearer token. {len(listed.tools)} tools.")
-                print("This is the strongest compliance story available — prefer this path.")
+                print("This is the strongest compliance story available: prefer this path.")
                 for t in listed.tools[:15]:
                     print(f"  {t.name}")
     except Exception as exc:  # noqa: BLE001 - the error IS the result here

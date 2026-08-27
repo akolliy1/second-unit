@@ -1,0 +1,799 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Second Unit, an autonomous post-production pipeline SRE</title>
+<meta name="description" content="A crew of Gemini agents reads a VFX render farm's telemetry through the Grafana MCP server, works out which shot misses its client review and by how long, and, only after a human approves, writes the incident back into Grafana.">
+<style>
+{% include 'partials/_tokens.css' %}
+
+/* ==========================================================================
+   Landing page. Its own chrome (top bar + anchors, no operator rail) but the
+   SAME tokens as the console, so a visitor who clicks "Open the console"
+   arrives somewhere that looks like the page they came from.
+
+   Motion rule enforced structurally, not by exception: every animation,
+   transition and transform lives inside `html[data-motion="1"]`, and that
+   attribute is set by JS only when the visitor has NOT asked for reduced
+   motion. So the static page is the default, reduced motion, JS disabled and
+   JS broken all land on the same complete, readable document.
+   ========================================================================== */
+body{ padding:0 }
+:root{
+  --max:1120px;
+  /* Small print on this page is often 11-13px, and --ink3 on --panel measures 4.32:1, 
+     under AA for text that size. One landing-local step lighter clears 4.5:1 on all three
+     grounds used here (bg 5.5, panel 5.0, panel2 4.7). --ink3 stays for the things that
+     are genuinely decoration: separator dots and one border. */
+  --mute:#7a8898;
+}
+a{ color:var(--cyan) }
+
+.lwrap{ max-width:var(--max); margin:0 auto; padding:0 clamp(1rem,4vw,2rem) }
+.sr{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0);
+  white-space:nowrap }
+a.skip:focus{ position:fixed; left:.75rem; top:.75rem; width:auto; height:auto; clip:auto;
+  z-index:99; background:var(--panel2); color:var(--ink); padding:.55rem .8rem;
+  border:1px solid var(--line2); border-radius:8px }
+:focus-visible{ outline:2px solid var(--cyan); outline-offset:2px; border-radius:6px }
+
+/* ---------------------------------------------------------------- top bar */
+.lbar{
+  position:sticky; top:0; z-index:40;
+  background:color-mix(in srgb, var(--bg) 90%, transparent);
+  border-bottom:1px solid var(--line); backdrop-filter:blur(10px);
+}
+.lbar-in{ display:flex; align-items:center; gap:clamp(.5rem,2vw,1.4rem);
+  max-width:var(--max); margin:0 auto; padding:.6rem clamp(1rem,4vw,2rem) }
+.mark{ display:flex; flex-direction:column; text-decoration:none; color:var(--ink);
+  line-height:1.1; flex:0 0 auto }
+.mark b{ font-size:.94rem; letter-spacing:.02em }
+.mark small{ color:var(--mute); font-size:.62rem; letter-spacing:.12em;
+  text-transform:uppercase }
+.lnav{ display:flex; gap:.2rem; margin-left:auto }
+.lnav a{ color:var(--ink2); text-decoration:none; font-size:.85rem; padding:.4rem .6rem;
+  border-radius:8px; white-space:nowrap }
+.lnav a:hover{ color:var(--ink); background:var(--panel) }
+
+/* ------------------------------------------------------------------ buttons
+   .cta is the single highest-contrast element on the page: amber on near-black
+   ink. Nothing else on the page is allowed a filled amber background. */
+.cta,.cta2,.cta3{
+  display:inline-flex; align-items:center; justify-content:center; gap:.45rem;
+  font:inherit; font-size:.9rem; font-weight:650; text-decoration:none;
+  padding:.6rem 1rem; border-radius:9px; border:1px solid transparent;
+  white-space:nowrap;
+}
+.cta{ background:var(--amber); color:#140e02; box-shadow:0 1px 0 #ffd486 inset }
+.cta:hover{ background:#ffb733 }
+.cta2{ background:var(--panel2); color:var(--ink); border-color:var(--line2) }
+.cta2:hover{ border-color:var(--amber) }
+.cta3{ background:transparent; color:var(--mute); border-color:var(--line);
+  cursor:not-allowed }
+.lbar .cta{ margin-left:.2rem; padding:.5rem .85rem; font-size:.85rem }
+.arrow{ font-family:var(--mono); font-size:.95em }
+
+/* ------------------------------------------------------------------ sections */
+section{ padding:clamp(2.6rem,7vw,5rem) 0; border-top:1px solid var(--line) }
+section:first-of-type{ border-top:0 }
+.eyebrow{
+  display:inline-flex; align-items:center; gap:.5rem; font-family:var(--mono);
+  font-size:.7rem; letter-spacing:.12em; text-transform:uppercase; color:var(--mute);
+  border:1px solid var(--line); border-radius:999px; padding:.3rem .7rem;
+  background:var(--panel);
+}
+.dot{ width:7px; height:7px; border-radius:50%; background:var(--ok);
+  box-shadow:0 0 0 3px var(--ok-dim); flex:0 0 7px }
+h1{ font-size:clamp(1.85rem,4.6vw,3.05rem); line-height:1.12; letter-spacing:-.025em;
+  margin:1.1rem 0 0; max-width:22ch; font-weight:700 }
+h2{ font-size:clamp(1.35rem,3vw,2rem); line-height:1.2; letter-spacing:-.02em;
+  margin:0 0 .6rem; max-width:32ch; font-weight:700 }
+h3{ font-size:1rem; margin:0 0 .3rem; letter-spacing:-.01em }
+.kicker{ font-family:var(--mono); font-size:.7rem; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--amber); margin:0 0 .9rem }
+.lede{ font-size:clamp(1rem,1.6vw,1.14rem); color:var(--ink2); max-width:62ch;
+  margin:1.1rem 0 0 }
+p{ margin:.7rem 0 0 }
+.sub{ color:var(--ink2); max-width:64ch }
+.tiny{ color:var(--mute); font-size:.8rem }
+
+/* the animated underline: three argument-carrying words, drawn once */
+.u{ position:relative; color:var(--ink); font-weight:inherit; white-space:nowrap }
+.u svg{ position:absolute; left:0; bottom:-.16em; width:100%; height:.34em;
+  overflow:visible; pointer-events:none }
+.u path{ fill:none; stroke:var(--amber); stroke-width:5; stroke-linecap:round }
+
+/* ------------------------------------------------------------------- hero */
+.hero{ padding-top:clamp(2.2rem,6vw,4rem) }
+.hero-grid{ display:grid; gap:clamp(1.4rem,4vw,2.6rem);
+  grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr); align-items:start }
+.hero-ctas{ display:flex; flex-wrap:wrap; gap:.6rem; margin:1.5rem 0 0 }
+.ctanote{ color:var(--mute); font-size:.78rem; margin:.55rem 0 0 }
+
+/* the finding, quoted from the product itself */
+.finding{ background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--amber);
+  border-radius:var(--r); padding:1rem 1.1rem; margin:0 }
+.finding p{ margin:0; font-size:1.02rem; line-height:1.45; color:var(--ink) }
+.finding p + p{ margin-top:.5rem; color:var(--ink2); font-size:.92rem }
+.finding footer{ margin-top:.7rem; font-family:var(--mono); font-size:.68rem;
+  letter-spacing:.1em; text-transform:uppercase; color:var(--mute) }
+
+/* -------------------------------------------------------------- stat strip */
+.stats{ display:grid; gap:1px; background:var(--line); border:1px solid var(--line);
+  border-radius:var(--r); overflow:hidden; margin:clamp(1.8rem,4vw,2.6rem) 0 0;
+  grid-template-columns:repeat(4,minmax(0,1fr)) }
+.stat{ background:var(--panel); padding:.95rem 1rem }
+.stat b{ display:block; font-family:var(--mono); font-size:clamp(1.5rem,3.4vw,2rem);
+  font-weight:600; letter-spacing:-.02em; color:var(--ink); line-height:1.1;
+  font-variant-numeric:tabular-nums }
+.stat span{ display:block; font-size:.78rem; color:var(--ink2); margin-top:.3rem }
+.stat em{ display:block; font-style:normal; font-size:.72rem; color:var(--mute);
+  margin-top:.2rem }
+.statsnote{ color:var(--mute); font-size:.76rem; margin:.6rem 0 0 }
+
+/* ------------------------------------------------------------- three beats */
+.beats{ display:grid; gap:1rem; grid-template-columns:repeat(3,minmax(0,1fr));
+  margin-top:1.6rem }
+.beat{ background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
+  padding:1.1rem }
+.beat svg{ display:block; color:var(--amber); margin-bottom:.7rem }
+.beat p{ color:var(--ink2); font-size:.9rem; margin:.35rem 0 0 }
+
+/* ---------------------------------------------------------------- stepper */
+.steps{ display:grid; gap:.75rem; grid-template-columns:repeat(5,minmax(0,1fr));
+  margin-top:1.6rem }
+.step{ background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
+  padding:.9rem; display:flex; flex-direction:column; min-width:0 }
+.step .n{ font-family:var(--mono); font-size:.68rem; color:var(--mute);
+  letter-spacing:.1em }
+.step h3{ font-size:.92rem; margin:.35rem 0 .35rem }
+.step p{ color:var(--ink2); font-size:.83rem; margin:0 0 .8rem; flex:1 1 auto }
+.tier{ align-self:flex-start; font-family:var(--mono); font-size:.66rem;
+  letter-spacing:.08em; text-transform:uppercase; padding:.14rem .45rem;
+  border-radius:999px; border:1px solid var(--line2); color:var(--ink2) }
+.tier[data-t="pro"]{ color:var(--violet); border-color:#3b3160 }
+.tier[data-t="flash"]{ color:var(--cyan); border-color:#24505e }
+.rule{ margin-top:1.4rem; background:var(--panel2); border:1px solid var(--line2);
+  border-radius:var(--r); padding:1rem 1.1rem }
+.rule p{ margin:0; font-size:1.02rem; color:var(--ink) }
+.rule p + p{ margin-top:.45rem; font-size:.88rem; color:var(--ink2) }
+
+/* ------------------------------------------------------- verification, roomy */
+.verify{ background:
+  radial-gradient(900px 420px at 20% 0%, #14202b 0%, transparent 70%), var(--bg) }
+.verify .lede{ font-size:clamp(1.05rem,1.8vw,1.22rem) }
+.claim{ font-size:clamp(1.25rem,2.6vw,1.7rem); line-height:1.3; letter-spacing:-.02em;
+  margin:1.6rem 0 0; max-width:34ch; font-weight:650 }
+.outcomes{ display:grid; gap:.75rem; grid-template-columns:repeat(4,minmax(0,1fr));
+  margin-top:1.8rem }
+.oc{ background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
+  padding:.95rem; border-top:2px solid var(--line2) }
+.oc code{ font-family:var(--mono); font-size:.78rem; color:var(--ink);
+  overflow-wrap:anywhere }
+.oc .v{ display:block; font-family:var(--mono); font-size:1.5rem; line-height:1.1;
+  margin:.5rem 0 .25rem; font-variant-numeric:tabular-nums }
+.oc p{ margin:.15rem 0 0; color:var(--ink2); font-size:.82rem }
+.oc[data-o="confirmed"]{ border-top-color:var(--ok) }
+.oc[data-o="confirmed"] .v{ color:var(--ok) }
+.oc[data-o="honest_failure"]{ border-top-color:var(--amber) }
+.oc[data-o="honest_failure"] .v{ color:var(--amber) }
+.oc[data-o="unchecked"]{ border-top-color:var(--ink3) }
+.oc[data-o="unchecked"] .v{ color:var(--ink2) }
+.oc[data-o="false_success"]{ border-top-color:var(--crit) }
+.oc[data-o="false_success"] .v{ color:var(--crit) }
+.metric{ display:block; margin-top:1.4rem; font-family:var(--mono); font-size:.8rem;
+  color:var(--ink2); background:var(--panel); border:1px solid var(--line);
+  border-radius:8px; padding:.7rem .85rem; overflow-x:auto; white-space:pre }
+
+/* ------------------------------------------------------------------ built on */
+.built{ display:grid; gap:1rem; grid-template-columns:repeat(2,minmax(0,1fr));
+  margin-top:1.6rem }
+.plat{ background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
+  padding:1.1rem }
+.plat header{ display:flex; align-items:center; gap:.6rem; margin-bottom:.8rem }
+.plat header svg{ color:var(--amber); flex:0 0 auto }
+.plat header b{ font-size:1rem; letter-spacing:-.01em }
+.plat ul{ list-style:none; margin:0; padding:0; display:grid; gap:.45rem }
+.plat li{ font-size:.87rem; color:var(--ink2); display:flex; gap:.5rem }
+.plat li b{ color:var(--ink); font-weight:600 }
+.plat li::before{ content:"·"; color:var(--ink3) }
+
+/* the marquee: the one place continuous motion is honest, 76 tools reads as
+   "many" far better than a list does. aria-hidden; the same names are in the
+   text equivalent above it. */
+.mq{ margin-top:1.6rem; border:1px solid var(--line); border-radius:var(--r);
+  background:var(--panel); overflow:hidden }
+/* The edge fade belongs to the SCROLLING form only, over a wrapped, static block it
+   would dim the first and last name of every row for no reason. */
+html[data-motion="1"] .mq{
+  mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent);
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent) }
+/* Static by default: the names WRAP into a block, so a visitor with reduced motion (or
+   no JS) can read all twenty rather than the six that fit on one row. Only
+   html[data-motion="1"] turns it into a single scrolling row. */
+.mq-track{ display:flex; flex-wrap:wrap; padding:.15rem .25rem }
+html[data-motion="1"] .mq-track{ flex-wrap:nowrap; width:max-content; padding:0 }
+.mq-track span{ font-family:var(--mono); font-size:.8rem; color:var(--ink2);
+  padding:.75rem .9rem; white-space:nowrap }
+.mq-track span::after{ content:"·"; color:var(--ink3); margin-left:.9rem }
+html:not([data-motion="1"]) .mq-track span:last-child::after{ content:"" }
+
+/* ------------------------------------------------------------------- see it */
+.dothree{ display:grid; gap:1rem; grid-template-columns:repeat(3,minmax(0,1fr));
+  margin-top:1.6rem }
+.do{ background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
+  padding:1.1rem; display:flex; flex-direction:column }
+.do .n{ font-family:var(--mono); font-size:.68rem; color:var(--mute); letter-spacing:.1em }
+.do p{ color:var(--ink2); font-size:.88rem; margin:.35rem 0 1rem; flex:1 1 auto }
+.do a{ align-self:flex-start; text-decoration:none; font-size:.87rem; font-weight:600;
+  color:var(--ink); border-bottom:1px solid var(--amber-dim); padding-bottom:1px }
+.do a:hover{ border-bottom-color:var(--amber) }
+.closer{ display:flex; flex-wrap:wrap; gap:.6rem; align-items:center;
+  margin-top:1.8rem }
+
+/* ------------------------------------------------------------------- footer */
+footer.lfoot{ border-top:1px solid var(--line); padding:1.6rem 0 2.6rem;
+  color:var(--mute); font-size:.82rem }
+.lfoot-in{ display:flex; flex-wrap:wrap; gap:.6rem 1.4rem; align-items:center }
+.lfoot a{ color:var(--ink2); text-decoration:none; border-bottom:1px solid var(--line2) }
+.lfoot a:hover{ color:var(--ink) }
+.lfoot .honest{ width:100%; color:var(--mute) }
+
+/* ================================================================ responsive */
+@media (max-width:980px){
+  .hero-grid{ grid-template-columns:minmax(0,1fr) }
+  h1{ max-width:26ch }
+  .steps{ grid-template-columns:repeat(2,minmax(0,1fr)) }
+  .outcomes{ grid-template-columns:repeat(2,minmax(0,1fr)) }
+  .beats,.built,.dothree{ grid-template-columns:minmax(0,1fr) }
+}
+@media (max-width:760px){
+  .lnav{ display:none }
+  .lbar .cta{ margin-left:auto }
+  .stats{ grid-template-columns:repeat(2,minmax(0,1fr)) }
+}
+@media (max-width:430px){
+  .steps{ grid-template-columns:minmax(0,1fr) }
+  .hero-ctas .cta,.hero-ctas .cta2,.hero-ctas .cta3{ flex:1 1 100% }
+}
+
+/* =================================================================== motion
+   Everything below is gated on html[data-motion="1"], which JS sets only when
+   `prefers-reduced-motion: reduce` is NOT matched. Nothing loops but .mq-track;
+   nothing spins; nothing bounces. */
+html[data-motion="1"]{ scroll-behavior:smooth }
+html[data-motion="1"] .rv{ opacity:0; transform:translateY(10px) }
+html[data-motion="1"] .rv.in{ opacity:1; transform:none;
+  transition:opacity .5s ease, transform .5s ease }
+html[data-motion="1"] .u path{ stroke-dasharray:1; stroke-dashoffset:1 }
+html[data-motion="1"] .u.in path{ stroke-dashoffset:0; transition:stroke-dashoffset .6s ease .1s }
+html[data-motion="1"] .dot{ animation:pulse 2.4s ease-in-out infinite }
+html[data-motion="1"] .cta,html[data-motion="1"] .cta2{ transition:background .15s ease, border-color .15s ease }
+html[data-motion="1"] .mq-track{ animation:slide 46s linear infinite }
+html[data-motion="1"] .mq:hover .mq-track{ animation-play-state:paused }
+@keyframes pulse{
+  0%,100%{ box-shadow:0 0 0 3px var(--ok-dim) }
+  50%{ box-shadow:0 0 0 6px #173a1d55 }
+}
+@keyframes slide{ from{ transform:translateX(0) } to{ transform:translateX(-50%) } }
+</style>
+</head>
+<body>
+<a class="sr skip" href="#main">Skip to content</a>
+
+<header class="lbar">
+  <div class="lbar-in">
+    <a class="mark" href="/"><b>SECOND UNIT</b><small>render farm ops</small></a>
+    <nav class="lnav" aria-label="On this page">
+      <a href="#why">Why this exists</a>
+      <a href="#how">How it works</a>
+      <a href="#verification">Verification</a>
+      <a href="#built">Built on</a>
+    </nav>
+    <a class="cta" href="/overview">Open the console <span class="arrow" aria-hidden="true">&rarr;</span></a>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- ============================================================ hero -->
+<section class="hero">
+  <div class="lwrap">
+    <div class="hero-grid">
+      <div>
+        <p class="eyebrow"><span class="dot" aria-hidden="true"></span>
+          <span id="liveLabel">live · synthetic render farm</span></p>
+        <h1>Your render farm already knows which shot
+          <span class="u">misses<svg viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><path d="M1 7 C 22 2, 62 2, 99 6" pathLength="1"/></svg></span>
+          Friday. Nobody who needs that can read it.</h1>
+        <p class="lede"><b>Second Unit is an autonomous post-production pipeline SRE.</b>
+          A crew of Gemini agents reads a VFX render farm's telemetry through the Grafana
+          MCP server, works out which shot is going to miss its client review and by how
+          long, and, only after a human approves, writes the incident back into Grafana.</p>
+        <div class="hero-ctas">
+          <a class="cta" href="/overview">Open the console <span class="arrow" aria-hidden="true">&rarr;</span></a>
+          <a class="cta2" href="https://github.com/akolliy1/second-unit" rel="noopener">Read the source</a>
+          <span class="cta3" aria-disabled="true">Demo video coming</span>
+        </div>
+        <p class="ctanote">No account, nothing to sign into. The console is five pages and
+          a live investigation you can run yourself.</p>
+      </div>
+      <figure class="finding">
+        <p>SH042's lighting pass will miss the 15:35 client review by approximately
+          1.6 hours.</p>
+        <p>Capacity is down 46%. The lighting department is blocked; compositing is blocked
+          downstream.</p>
+        <footer>the finding, in the words the producer gets it in</footer>
+      </figure>
+    </div>
+
+    <div class="stats" id="stats">
+      <div class="stat">
+        <b data-stat="slate" data-fmt="int">&hellip;</b>
+        <span>shots on the studio slate</span>
+        <em>the production tracker's published work</em>
+      </div>
+      <div class="stat">
+        <b data-stat="today" data-fmt="int">&hellip;</b>
+        <span>shots ingested today</span>
+        <em>the slate grows without a scheduler</em>
+      </div>
+      <div class="stat">
+        <b data-stat="fleet" data-fmt="int">&hellip;</b>
+        <span>passes with live telemetry</span>
+        <em id="excLabel">every one of them investigable</em>
+      </div>
+      <div class="stat">
+        <b data-stat="calls" data-fmt="int">&hellip;</b>
+        <span>agent tool calls, last run</span>
+        <em id="toolsLabel">read back from our own metrics</em>
+      </div>
+    </div>
+    <p class="statsnote" id="statsNote">Fetched from this service's own APIs when you
+      loaded the page, <code class="mono">/api/shots</code>,
+      <code class="mono">/api/fleet</code>,
+      <code class="mono">/api/agent/metrics</code>.</p>
+  </div>
+</section>
+
+<!-- ======================================================= why this exists -->
+<section id="why">
+  <div class="lwrap">
+    <p class="kicker rv">Why this exists</p>
+    <h2 class="rv">A visual effects house lives and dies by the client review date.</h2>
+    <p class="sub rv">The data was never missing. What's missing is the translation layer
+      between infrastructure telemetry and production decisions.</p>
+    <div class="beats">
+      <article class="beat rv">
+        <svg width="30" height="30" viewBox="0 0 30 30" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+          <rect x="1.5" y="4" width="27" height="22" rx="3"/>
+          <path d="M6 21 L11 14 L15 17 L20 9 L24 13"/>
+          <path d="M1.5 10 H28.5" stroke-opacity=".5"/>
+        </svg>
+        <h3>The telemetry is already in Grafana</h3>
+        <p>Queue depth, frame rates, GPU errors, and the review deadline itself, all of it
+          is already being scraped. Nothing is missing.</p>
+      </article>
+      <article class="beat rv">
+        <svg width="30" height="30" viewBox="0 0 30 30" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+          <path d="M1.5 15 C6 8, 24 8, 28.5 15 C24 22, 6 22, 1.5 15 Z"/>
+          <circle cx="15" cy="15" r="3.4"/>
+          <path d="M4 26 L26 4"/>
+        </svg>
+        <h3>Nobody who needs it can read it</h3>
+        <p>The VFX supervisor doesn't open dashboards. The producer doesn't write PromQL.
+          The answer exists in a language its audience doesn't speak.</p>
+      </article>
+      <article class="beat rv">
+        <svg width="30" height="30" viewBox="0 0 30 30" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+          <circle cx="15" cy="16" r="11.5"/>
+          <path d="M15 16 V8"/>
+          <path d="M15 16 L21.5 20"/>
+          <path d="M15 16 L15 8 A8 8 0 0 1 21.5 20 Z" fill="currentColor" fill-opacity=".18" stroke="none"/>
+        </svg>
+        <h3>The delay is where money burns</h3>
+        <p>A coordinator notices a queue looks slow, asks a pipeline TD, and four hours
+          later somebody says "we're going to miss Friday."</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================== how it works -->
+<section id="how">
+  <div class="lwrap">
+    <p class="kicker rv">How it works</p>
+    <h2 class="rv">Five stages, deterministically sequenced, with a typed object at every
+      boundary.</h2>
+    <p class="sub rv">Each stage gets its own model tier and its own tool budget, which of
+      the bridge's 76 tools it may touch. The planner proposes the write-back and holds no
+      write tools at all.</p>
+    <ol class="steps">
+      <li class="step rv">
+        <span class="n">STAGE 1</span>
+        <h3>Watchtower</h3>
+        <p>What is abnormal right now, breadth, not diagnosis.</p>
+        <span class="tier" data-t="flash">Gemini Flash</span>
+      </li>
+      <li class="step rv">
+        <span class="n">STAGE 2</span>
+        <h3>Diagnostician</h3>
+        <p>Why, including what it ruled <em>out</em>, and on what evidence.</p>
+        <span class="tier" data-t="pro">Gemini Pro</span>
+      </li>
+      <li class="step rv">
+        <span class="n">STAGE 3</span>
+        <h3>Impact Forecaster</h3>
+        <p>The production consequence, in a producer's language.</p>
+        <span class="tier" data-t="pro">Gemini Pro</span>
+      </li>
+      <li class="step rv">
+        <span class="n">STAGE 4</span>
+        <h3>Remediation Planner</h3>
+        <p>The real-world fix and the proposed write-back. Holds no write tools.</p>
+        <span class="tier" data-t="flash">Gemini Flash</span>
+      </li>
+      <li class="step rv">
+        <span class="n">STAGE 5</span>
+        <h3>Remediation Executor</h3>
+        <p>Performs approved writes, one agent call per write.</p>
+        <span class="tier" data-t="flash">Gemini Flash</span>
+      </li>
+    </ol>
+    <div class="rule rv">
+      <p><b>The model decides what it finds. Code decides what happens next.</b></p>
+      <p>Every guarantee we tried to express as an instruction held <em>most</em> of the
+        time, which is worse than failing, because it passes testing. Nothing is written
+        without human approval because the planning stage has no mutating tools and the
+        executor is constructed only from an approval record. The delivery forecast is
+        arithmetic, and it refuses implausible input rather than forecasting from it.</p>
+    </div>
+    <p class="tiny rv" style="margin-top:1rem">The fleet sweep behind the numbers above uses
+      no model at all, plain Python over one Prometheus query, every shot every time, so
+      it cannot hallucinate a shot and costs nothing to refresh. The agent is spent only on
+      the exception.</p>
+  </div>
+</section>
+
+<!-- ====================================================== the differentiator -->
+<section id="verification" class="verify">
+  <div class="lwrap">
+    <p class="kicker rv">Verification</p>
+    <p class="claim rv">The agent's report is a
+      <span class="u">claim<svg viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><path d="M1 7 C 24 2, 60 3, 99 6" pathLength="1"/></svg></span>.
+      The system
+      <span class="u">checks<svg viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><path d="M1 6 C 26 2, 66 3, 99 7" pathLength="1"/></svg></span>
+      it, out of band, and shows the disagreement.</p>
+    <p class="lede rv">After an approved write-back, <code class="mono">verify.py</code> diffs
+      the stack through Grafana's HTTP API, <b>not the MCP tools the agent just used</b>, 
+      and prints what it finds. A verifier that asks the same tool that just lied learns
+      nothing.</p>
+    <div class="outcomes" id="outcomes">
+      <div class="oc rv" data-o="confirmed">
+        <code>confirmed</code>
+        <b class="v" data-claim="confirmed" data-fmt="int">&hellip;</b>
+        <p>Present in the stack, exactly as reported.</p>
+      </div>
+      <div class="oc rv" data-o="honest_failure">
+        <code>honest_failure</code>
+        <b class="v" data-claim="honest_failure" data-fmt="int">&hellip;</b>
+        <p>Reported as failed, and it genuinely failed. Trustworthy.</p>
+      </div>
+      <div class="oc rv" data-o="unchecked">
+        <code>unchecked</code>
+        <b class="v" data-claim="unchecked" data-fmt="int">&hellip;</b>
+        <p>No out-of-band check was possible. Said so rather than assumed.</p>
+      </div>
+      <div class="oc rv" data-o="false_success">
+        <code>false_success</code>
+        <b class="v" data-claim="false_success" data-fmt="int">&hellip;</b>
+        <p>Reported successful, but not present in the stack.</p>
+      </div>
+    </div>
+    <p class="sub rv" style="margin-top:1.4rem">That last outcome is not hypothetical. It is
+      why the module exists, we watched an agent report a write it had not made. So the
+      outcome is a metric, graphable next to everything else, and visible on the Agent page
+      of the console:</p>
+    <code class="metric rv">second_unit_write_claims_total{outcome="false_success"}</code>
+    <p class="tiny rv" id="claimNote">Counts are the last recorded values from our own
+      observability series, read back from Prometheus.</p>
+  </div>
+</section>
+
+<!-- ============================================================== built on -->
+<section id="built">
+  <div class="lwrap">
+    <p class="kicker rv">Built on</p>
+    <h2 class="rv">Imported and called at runtime, not named in a README.</h2>
+    <div class="built">
+      <article class="plat rv">
+        <header>
+          <svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <path d="M13 2 L23 7.6 V18.4 L13 24 L3 18.4 V7.6 Z"/>
+            <path d="M13 9 L18 11.8 V17.2 L13 20 L8 17.2 V11.8 Z" stroke-opacity=".55"/>
+          </svg>
+          <b>Google Cloud</b>
+        </header>
+        <ul>
+          <li><span><b>Vertex AI</b>. Gemini 2.5 Flash and Pro behind all five stages</span></li>
+          <li><span><b>Agent Development Kit</b>, five <code class="mono">LlmAgent</code>s with an output schema on every boundary</span></li>
+          <li><span><b>Cloud Run</b>, service plus a job for the telemetry seeder, and a Scheduler trigger</span></li>
+          <li><span><b>Secret Manager</b>, every credential; nothing in an image</span></li>
+          <li><span><b>Cloud Text-to-Speech</b>. Chirp3-HD, for the spoken dailies briefing</span></li>
+        </ul>
+      </article>
+      <article class="plat rv">
+        <header>
+          <svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <circle cx="6" cy="19" r="2.6"/>
+            <circle cx="13" cy="8" r="2.6"/>
+            <circle cx="20" cy="15" r="2.6"/>
+            <path d="M7.4 16.8 L11.6 10.2 M14.6 9.6 L18.6 13.2"/>
+            <path d="M2.5 23.5 H23.5" stroke-opacity=".5"/>
+          </svg>
+          <b>Grafana</b>
+        </header>
+        <ul>
+          <li><span><b>Grafana Cloud MCP</b>, the bridge exposes <b>76 tools</b>; every fact the agent states comes through them</span></li>
+          <li><span><b>Prometheus and Loki</b>, queried live, read <em>and</em> written</span></li>
+          <li><span><b>Agent Observability</b>, the agent's own tokens, latencies and failures pushed to the same stack it investigates</span></li>
+          <li><span><b>Dashboards and annotations</b>, the approved write-back lands where the crew already looks</span></li>
+        </ul>
+      </article>
+    </div>
+    <p class="sub rv" style="margin-top:1.4rem"><b>Twenty of those 76 tools</b> are wired
+      into the five stage budgets, read tools for the first four stages, write tools handed
+      out only after a human approves.</p>
+    <p class="sr">Those twenty tools are: list_datasources, list_alert_groups, list_prometheus_metric_names, list_prometheus_label_values, query_prometheus, list_loki_label_names, list_loki_label_values, query_loki_logs, query_loki_patterns, analyze_loki_labels, check_datasources_health, search_folders, search_dashboards, get_dashboard_summary, get_dashboard_by_uid, generate_deeplink, create_folder, create_annotation, update_dashboard, alerting_manage_rules.</p>
+    <div class="mq rv" aria-hidden="true">
+      <div class="mq-track" id="mqTrack">
+        <span>list_datasources</span>
+        <span>list_alert_groups</span>
+        <span>list_prometheus_metric_names</span>
+        <span>list_prometheus_label_values</span>
+        <span>query_prometheus</span>
+        <span>list_loki_label_names</span>
+        <span>list_loki_label_values</span>
+        <span>query_loki_logs</span>
+        <span>query_loki_patterns</span>
+        <span>analyze_loki_labels</span>
+        <span>check_datasources_health</span>
+        <span>search_folders</span>
+        <span>search_dashboards</span>
+        <span>get_dashboard_summary</span>
+        <span>get_dashboard_by_uid</span>
+        <span>generate_deeplink</span>
+        <span>create_folder</span>
+        <span>create_annotation</span>
+        <span>update_dashboard</span>
+        <span>alerting_manage_rules</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =========================================================== see it yourself -->
+<section id="see">
+  <div class="lwrap">
+    <p class="kicker rv">See it yourself</p>
+    <h2 class="rv">Three things you can do in the next two minutes.</h2>
+    <div class="dothree">
+      <article class="do rv">
+        <span class="n">01</span>
+        <h3>Open the console</h3>
+        <p>Fleet triage across every pass in flight, the active incident framed for your
+          role, farm vitals, and the agent's own health.</p>
+        <a href="/overview">Overview <span class="arrow" aria-hidden="true">&rarr;</span></a>
+      </article>
+      <article class="do rv">
+        <span class="n">02</span>
+        <h3>Run a live investigation</h3>
+        <p>Watch the five stages stream their tool calls, read the evidence with the exact
+          queries, then approve or refuse the write-back.</p>
+        <a href="/investigation">Investigation <span class="arrow" aria-hidden="true">&rarr;</span></a>
+      </article>
+      <article class="do rv">
+        <span class="n">03</span>
+        <h3>Ask it a question</h3>
+        <p>A question box over the same farm and the same tools, with a narrow budget so a
+          wrong answer cannot come slowly.</p>
+        <a href="/investigation#ask">Ask <span class="arrow" aria-hidden="true">&rarr;</span></a>
+      </article>
+    </div>
+    <div class="closer">
+      <a class="cta" href="/overview">Open the console <span class="arrow" aria-hidden="true">&rarr;</span></a>
+      <a class="cta2" href="https://github.com/akolliy1/second-unit" rel="noopener">Read the source</a>
+      <span class="cta3" aria-disabled="true">Demo video coming</span>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="lfoot">
+  <div class="lwrap lfoot-in">
+    <span>Second Unit. Agentic Cinema Hackathon, Grafana Labs track</span>
+    <a href="https://github.com/akolliy1/second-unit" rel="noopener">Repository</a>
+    <span>Demo video: coming</span>
+    <a href="https://github.com/akolliy1/second-unit/blob/main/LICENSE" rel="noopener">MIT licence</a>
+    <span class="honest">A prototype. The render farm is synthetic, 12 nodes and one GPU
+      throwing uncorrectable ECC errors, because a studio's farm is not something you can
+      borrow. No accounts, nothing to sign into.</span>
+  </div>
+</footer>
+
+<script>
+/* --------------------------------------------------------------------------
+   Landing page behaviour. Three jobs, in this order of importance:
+     1. never break the page, every step is guarded, and the page is complete
+        and readable with this script removed entirely
+     2. honour reduced motion, one matchMedia read gates ALL motion, including
+        the count-up, by setting html[data-motion]
+     3. quote real numbers, nothing on this page is a hardcoded statistic
+   -------------------------------------------------------------------------- */
+(function () {
+  "use strict";
+
+  var reduce = false;
+  try {
+    reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch (_e) { reduce = false; }
+  var motion = !reduce;
+  if (motion) document.documentElement.setAttribute("data-motion", "1");
+
+  /* ---------------------------------------------------------------- marquee
+     Built in JS, not markup, so the duplicated half a seamless loop needs is
+     not duplicated content in the document. aria-hidden on the container; the
+     same names are spelled out in the paragraph above it. */
+  /* The twenty names are IN THE MARKUP, so the box is never empty without JS. A
+     seamless -50% loop needs the row duplicated, and that duplication is the only
+     part that is this script's business. */
+  var track = document.getElementById("mqTrack");
+  if (track && motion) track.innerHTML = track.innerHTML + track.innerHTML;
+
+  /* ------------------------------------------------------------- reveals
+     Reveal state is opt-in via html[data-motion], so under reduced motion (or
+     no JS) every .rv is already visible and nothing needs to run. */
+  var rvs = Array.prototype.slice.call(document.querySelectorAll(".rv, .u"));
+  if (motion && "IntersectionObserver" in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (!en.isIntersecting) return;
+        en.target.classList.add("in");
+        io.unobserve(en.target);   /* drawn once, never again */
+      });
+    }, { rootMargin: "0px 0px -8% 0px", threshold: 0.15 });
+    rvs.forEach(function (el) { io.observe(el); });
+    /* Anything already on screen at load reveals immediately rather than
+       waiting for a scroll that may never come. */
+    requestAnimationFrame(function () {
+      rvs.forEach(function (el) {
+        var r = el.getBoundingClientRect();
+        if (r.top < (window.innerHeight || 0)) el.classList.add("in");
+      });
+    });
+  } else {
+    rvs.forEach(function (el) { el.classList.add("in"); });
+  }
+
+  /* --------------------------------------------------------------- numbers */
+  function fmt(n) {
+    try { return Number(n).toLocaleString("en-US"); }
+    catch (_e) { return String(n); }
+  }
+
+  /* Count-up is motion, so it is gated too: under reduced motion the final
+     value is written straight in. 900ms, ease-out, once. */
+  function setNum(el, value) {
+    if (!el) return;
+    var target = Number(value);
+    if (!isFinite(target)) { el.textContent = ", "; return; }
+    if (!motion || target === 0) { el.textContent = fmt(target); return; }
+    var t0 = null, DUR = 900;
+    function frame(ts) {
+      if (t0 === null) t0 = ts;
+      var p = Math.min(1, (ts - t0) / DUR);
+      var eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = fmt(Math.round(target * eased));
+      if (p < 1) requestAnimationFrame(frame);
+      else el.textContent = fmt(target);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  function stat(name) { return document.querySelector('[data-stat="' + name + '"]'); }
+
+  function getJSON(url) {
+    return fetch(url, { headers: { "Accept": "application/json" } })
+      .then(function (r) {
+        if (!r.ok) throw new Error(url + " -> " + r.status);
+        return r.json();
+      });
+  }
+
+  /* Every fetch is independent and every failure is silent on the page: a
+     landing page shows a dash and a neutral line, never an error. */
+  var failures = 0;
+  function noteFailure() {
+    failures += 1;
+    var n = document.getElementById("statsNote");
+    if (n && failures === 1) {
+      n.textContent = "Live figures are unavailable from this service right now. " +
+        "The console itself is unaffected.";
+    }
+  }
+
+  var shotsP = getJSON("/api/shots?per_page=1").then(function (d) {
+    var s = (d && d.summary) || {};
+    setNum(stat("slate"), d && d.total);
+    setNum(stat("today"), s.ingested_today);
+  }).catch(noteFailure);
+
+  var fleetP = getJSON("/api/fleet").then(function (d) {
+    var shots = (d && d.shots) || [];
+    var exceptions = (d && d.exceptions) || [];
+    setNum(stat("fleet"), shots.length);
+    var lab = document.getElementById("excLabel");
+    if (lab) {
+      lab.textContent = exceptions.length === 1
+        ? "1 flagged as an exception right now"
+        : fmt(exceptions.length) + " flagged as exceptions right now";
+    }
+  }).catch(noteFailure);
+
+  /* /api/agent/metrics asks Prometheus six questions and the service handles it on
+     the event loop, so in flight it delays everything behind it. Firing all three
+     fetches at once therefore made the ABOVE-THE-FOLD numbers wait on the slowest
+     one, the slate sat at ", " for eight seconds. Deliberately sequenced: the two
+     cheap calls fill the strip first, the expensive one lands when it lands. */
+  var metricsP = Promise.all([shotsP, fleetP]).then(function () {
+    return getJSON("/api/agent/metrics");
+  }).then(function (d) {
+    var calls = ((d && d.tool_calls) || []).reduce(function (a, r) {
+      return a + (Number(r.value) || 0);
+    }, 0);
+    setNum(stat("calls"), calls);
+
+    var distinct = {}, nTools = 0;
+    ((d && d.tool_latency_ms) || []).forEach(function (r) {
+      var t = r && r.labels && r.labels.tool;
+      if (t && !distinct[t]) { distinct[t] = 1; nTools += 1; }
+    });
+    var tl = document.getElementById("toolsLabel");
+    if (tl && nTools) {
+      tl.textContent = nTools + " distinct tools exercised";
+    }
+
+    var claims = (d && d.write_claims) || [];
+    var seen = 0;
+    claims.forEach(function (r) {
+      var o = r && r.labels && r.labels.outcome;
+      if (!o) return;
+      var el = document.querySelector('[data-claim="' + o + '"]');
+      if (el) { setNum(el, r.value); seen += 1; }
+    });
+    if (!seen) throw new Error("no write_claims series");
+
+    var cn = document.getElementById("claimNote");
+    if (cn && d.window) {
+      cn.textContent = "Counts are the last recorded values from our own observability " +
+        "series, read back from Prometheus over a " + d.window + " window, the same " +
+        "numbers that are in Grafana, from the same source.";
+    }
+  }).catch(function () {
+    var cn = document.getElementById("claimNote");
+    if (cn) {
+      cn.textContent = "Outcome counts are unavailable right now. The four outcomes are " +
+        "what the verifier distinguishes; the counts come from Prometheus.";
+    }
+    noteFailure();
+  });
+  void metricsP;
+
+  /* ------------------------------------------------------- anchor scrolling
+     scroll-behavior:smooth is set on html[data-motion="1"] only, so reduced
+     motion gets an instant jump from the browser's own handling. */
+})();
+</script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 {% extends "_base.html" %}
 {#
-  /start — pick a viewing lens, then go to the Overview.
+  /start: pick a viewing lens, then go to the Overview.
 
   This is not authentication and the page says so in as many words. Three cards, one link
   past them, and a live line of farm status underneath so the page is worth something
@@ -8,7 +8,7 @@
 
   The cards are real <a> links to `/?persona=…`, not buttons with a JS navigation. Two
   reasons: keyboard and middle-click behave the way a link should, and if localStorage is
-  unavailable — private window, blocked site data — the query parameter still carries the
+  unavailable, private window, blocked site data, the query parameter still carries the
   choice, so the page cannot be made useless by a storage exception. The click handler adds
   the remembered choice on top; it does not own the navigation.
 #}
@@ -50,7 +50,7 @@
 .role .go{display:inline-flex; align-items:center; gap:.35rem; margin-top:auto;
   padding-top:.7rem; font-size:.82rem; font-weight:650; color:var(--amber)}
 /* The lens already remembered gets marked, so returning here does not feel like starting
-   over — and so the "you are already viewing as X" fact is visible, not implied. */
+   over, and so the "you are already viewing as X" fact is visible, not implied. */
 .role[data-current="1"]{border-color:var(--amber); box-shadow:inset 0 0 0 1px var(--amber-dim)}
 .role[data-current="1"] .rtag::after{content:" · current lens"; color:var(--amber)}
 
@@ -74,7 +74,7 @@
 
 <section class="sect">
   <p class="lede">
-    <b>This is a viewing lens, not a login</b> — there is nothing to sign into, no account,
+    <b>This is a viewing lens, not a login</b>, there is nothing to sign into, no account,
     and no permission changes: the same investigation and the same evidence, reported in the
     language of whoever has to act on it. Pick one, or skip straight to the farm.
   </p>
@@ -86,7 +86,7 @@
       <h3>Pipeline TD</h3>
       <p class="who">The engineer who keeps the farm running.</p>
       <ul class="sees">
-        <li>Nodes, throughput, queue depth — the machine-level cause</li>
+        <li>Nodes, throughput, queue depth, the machine-level cause</li>
         <li>The exact PromQL and LogQL behind every claim</li>
         <li>Ruled-out hypotheses, not just the accepted one</li>
         <li>Drain / requeue actions and what they cost the pool</li>
@@ -114,7 +114,7 @@
       <ul class="sees">
         <li>Does this make the review, and by how much it misses</li>
         <li>Who is idle, and what waiting actually costs</li>
-        <li>Plain language — no node names, no queries</li>
+        <li>Plain language, no node names, no queries</li>
         <li>One decision: approve the fix, or don't</li>
       </ul>
       <span class="go">Use this lens →</span>
@@ -133,7 +133,7 @@
   <div class="card farm" id="farmCard">
     <span class="gl" aria-hidden="true">●</span>
     <span class="txt" id="farmLine">reading the farm…<span class="sub">one call to
-      <span class="mono">/api/fleet</span> — the same sweep the Overview uses</span></span>
+      <span class="mono">/api/fleet</span>, the same sweep the Overview uses</span></span>
   </div>
 </section>
 {% endblock %}
@@ -145,7 +145,7 @@ the product whose content is a choice, which is why it is a page rather than a m
 
 <h4>What this is not</h4>
 <p>Not authentication. There are no accounts, no credentials, and no access control anywhere
-in this prototype — a stranger with the URL sees everything, by design. Choosing a lens
+in this prototype, a stranger with the URL sees everything, by design. Choosing a lens
 changes <em>wording and level of detail</em>, never which data is fetched or what the agent
 is allowed to do.</p>
 <p class="dnote">The real permission boundary is elsewhere and is not ours: the Grafana
@@ -155,13 +155,13 @@ server-side. App-level roles on top of that would be decoration over someone els
 
 <h4>What clicking a card does</h4>
 <ul>
-  <li>Writes the choice to <code>localStorage["second-unit:persona"]</code> — the value is
+  <li>Writes the choice to <code>localStorage["second-unit:persona"]</code>, the value is
       one of <code>td</code>, <code>supervisor</code>, <code>producer</code></li>
   <li>Navigates to <code>/?persona=…</code>, so the choice also travels in the URL</li>
 </ul>
 <p>Both, because either alone has a hole: storage throws in a private window or with site
 data blocked, and a URL parameter is forgotten on the next visit. The card is a plain link,
-so it still works with JavaScript broken — the handler only adds the remembered value.</p>
+so it still works with JavaScript broken, the handler only adds the remembered value.</p>
 <p><code>?persona=</code> on any page overrides the remembered choice for that visit, which
 is what makes deep links for a demo reliable.</p>
 
@@ -170,13 +170,43 @@ is what makes deep links for a demo reliable.</p>
 Overview's triage strip: two Prometheus instant queries and division in Python, no model in
 the path. It reports the number of shots in flight, how many are forecast to miss the
 published review deadline, and the worst one by slip.</p>
-<p class="dnote">It is fetched once rather than polled — this page is somewhere a judge
+<p class="dnote">It is fetched once rather than polled, this page is somewhere a judge
 spends seconds, and the Overview owns the live view. If the sweep fails, the reason is
 printed here; if it returns no shots, the line says the seeder is probably not running
 rather than implying a quiet farm.</p>
 {% endblock %}
 
 {% block scripts %}
+<script>
+/* Honour where the visitor was going.
+ *
+ * The gate redirects here with ?next=<path>. Sending them to a generic home afterwards
+ * would throw away the intent that brought them, so every route out of this page carries
+ * the destination. Only same-origin absolute paths are accepted: `next` arrives from a URL
+ * and an open redirect is not a feature. */
+(function wireNext() {
+  var next = new URLSearchParams(location.search).get("next") || "/overview";
+  if (!/^\/[^\/]/.test(next)) next = "/overview";     // no protocol-relative, no host
+  window.__next = next;
+
+  document.querySelectorAll('a[href^="/?persona="], a[href^="/overview?persona="]').forEach(function (a) {
+    var p = new URL(a.href, location.origin).searchParams.get("persona");
+    a.setAttribute("href", next + (next.indexOf("?") < 0 ? "?" : "&") + "persona=" + p);
+  });
+  document.querySelectorAll('a[href="/"], a[href="/overview"]').forEach(function (a) {
+    a.setAttribute("href", next);
+  });
+
+  /* Declining is a decision, and is remembered. Someone who does not want to pick a lens
+     must not be asked again on every navigation. */
+  document.querySelectorAll("a,button").forEach(function (el) {
+    if (!/just show me|skip/i.test(el.textContent || "")) return;
+    el.addEventListener("click", function () {
+      try { localStorage.setItem("second-unit:persona:declined", "1"); } catch (e) {}
+    });
+  });
+})();
+</script>
 <script>
 "use strict";
 /* ==========================================================================
@@ -207,7 +237,7 @@ document.querySelectorAll(".role").forEach((a) => {
 const STATUS_TEXT = {critical:"critical", at_risk:"at risk", on_track:"on track",
                      done:"done", unknown:"unknown"};
 function fmtHours(h){
-  if (h === null || h === undefined || isNaN(h)) return "—";
+  if (h === null || h === undefined || isNaN(h)) return ", ";
   const mins = Math.round(Math.abs(h) * 60);
   const s = mins >= 60 ? Math.floor(mins/60) + "h " + String(mins%60).padStart(2,"0") + "m"
                        : mins + "m";
@@ -236,7 +266,7 @@ function line(kind, glyph, html){
   } catch (e){
     line("bad", "✗",
       "<b>The fleet sweep is not answering.</b><span class=\"sub\">" +
-      esc(e.message || String(e)) + " — the console still loads; the triage strip will say " +
+      esc(e.message || String(e)) + ", the console still loads; the triage strip will say " +
       "the same thing rather than render an empty farm.</span>");
     fresh("bad", "fleet call failed");
     return;
@@ -254,7 +284,7 @@ function line(kind, glyph, html){
     line("bad", "✗",
       "<b>No shots in flight.</b><span class=\"sub\">The sweep succeeded and returned " +
       "nothing, which for this farm means <span class=\"mono\">shot_frames_remaining</span> " +
-      "has no series — the seeder is most likely stopped. Not a farm with no work in it." +
+      "has no series, the seeder is most likely stopped. Not a farm with no work in it." +
       "</span>");
     fresh("warn", "no shots in flight");
     return;
@@ -272,8 +302,8 @@ function line(kind, glyph, html){
 
   if (worst){
     line("warn", "▲",
-      "<b>" + shots.length + " shots in flight · " + ex.length + " forecast to miss review</b> — " +
-      "worst is <b>" + esc(worst.shot) + "</b> (" + esc(worst.department || "—") + "), " +
+      "<b>" + shots.length + " shots in flight · " + ex.length + " forecast to miss review</b>, " +
+      "worst is <b>" + esc(worst.shot) + "</b> (" + esc(worst.department || ", ") + "), " +
       esc(STATUS_TEXT[worst.status] || worst.status) + ", " +
       fmtHours(worst.slip_hours) + " past the " + dl + " deadline." +
       "<span class=\"sub\">Pick a lens above and the Overview explains that in your " +
@@ -288,7 +318,7 @@ function line(kind, glyph, html){
       "<span class=\"sub\">" + done + " pass" + (done === 1 ? "" : "es") + " complete" +
       (unk ? ", " + unk + " with no recent completions (reported as unknown, not on track)" : "") +
       ". This scenario replays a ~4h incident loop, so a calm farm here means the fault has " +
-      "not been injected yet — the Overview says when the next one lands.</span>" + ph);
+      "not been injected yet, the Overview says when the next one lands.</span>" + ph);
     fresh("live", "swept · no exception");
   }
 })();

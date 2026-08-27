@@ -172,7 +172,7 @@ class Farm:
     # -- one tick ------------------------------------------------------
 
     def catalog_series(self, ts_ms):
-        """Telemetry for the wider slate — the passes rendering today beyond the incident.
+        """Telemetry for the wider slate: the passes rendering today beyond the incident.
 
         Without this the catalogue was a table you could read and nothing else: no series
         meant no forecast, no investigation, and a "Shots" page whose rows led nowhere. A
@@ -181,7 +181,7 @@ class Farm:
         These shots are deliberately UNEVENTFUL. They burn down at their department's normal
         rate, so the farm looks like a working studio rather than a farm where everything is
         on fire, and the one real incident still stands out. An investigation of one of them
-        should honestly conclude "on track" — that is a useful answer, not a failure.
+        should honestly conclude "on track": that is a useful answer, not a failure.
         """
         import sys
         from pathlib import Path
@@ -194,7 +194,7 @@ class Farm:
                 sys.path.insert(0, str(cand))
         try:
             from second_unit.shots_catalog import active
-        except Exception:  # noqa: BLE001 — the incident must not depend on the catalogue
+        except Exception:  # noqa: BLE001, the incident must not depend on the catalogue
             return []
 
         out = []
@@ -205,7 +205,7 @@ class Farm:
             # The first version burned frames at a department rate (anim 11/min), so a shot
             # the catalogue considered two days into a three-day pass reported itself
             # finished after 86 minutes. The console then showed "DONE · pass complete" for a
-            # shot the slate listed as rendering — two parts of the same product disagreeing
+            # shot the slate listed as rendering, two parts of the same product disagreeing
             # about the same shot, which is worse than either being wrong alone.
             #
             # Deriving progress from days_to_render makes the telemetry and the catalogue the
@@ -225,7 +225,7 @@ class Farm:
             # Each pass publishes its OWN review deadline.
             #
             # Without this the console judged every shot against the incident pass's
-            # deadline, which is hours away — so a roto pass legitimately due in three days
+            # deadline, which is hours away, so a roto pass legitimately due in three days
             # was marked CRITICAL for being slow against a review it has nothing to do with.
             # Fifteen shots on fire for no reason is not a dashboard, it is noise.
             from datetime import datetime as _dt, time as _t
@@ -242,7 +242,7 @@ class Farm:
 
         Midnight, not 08:00. With an 08:00 start, every shot ingested *today* had an epoch
         in the future for the first eight hours of the day: progress clamped to zero, the
-        counter never moved, and the console reported them as "no completions in window" —
+        counter never moved, and the console reported them as "no completions in window", 
         its phrase for a stalled pass. Fifteen healthy shots looked stalled every morning,
         which is precisely the false alarm that teaches an operator to ignore a screen.
         """
@@ -347,7 +347,7 @@ class Farm:
                            [(round(self.cache_hit_ratio(tier, minute), 4), ts_ms)]))
 
         # The rest of the slate, so every active shot has telemetry and can be forecast,
-        # investigated and asked about — not just the three in the incident.
+        # investigated and asked about: not just the three in the incident.
         series.extend(self.catalog_series(ts_ms))
 
         logs.extend(self._logs(minute))

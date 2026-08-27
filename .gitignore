@@ -1,4 +1,4 @@
-# Secrets — SETUP-NOW.md holds live Grafana tokens and the GCP project id.
+# Secrets: SETUP-NOW.md holds live Grafana tokens and the GCP project id.
 # It is a local worksheet, NOT part of the deliverable. Never commit it.
 SETUP-NOW.md
 .env

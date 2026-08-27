@@ -7,7 +7,7 @@ the product is actually for.
 **The catalogue is a pure function of the date.** `catalog(as_of)` returns the same shots on
 the same day in every process, forever, with no database, no migration, no scheduler and no
 drift between the seeder and the web app. It also means the slate keeps growing on its own
-after we stop touching it — which is the requirement: no intervention, every day, through
+after we stop touching it, which is the requirement: no intervention, every day, through
 the judging period.
 
 Live telemetry is a different thing and stays small. Only shots actually in flight get
@@ -29,7 +29,7 @@ INGEST_START = date(2026, 8, 13)
 #: New shots published per day. A mid-size feature unit publishes at roughly this rate.
 PER_DAY = 50
 
-#: Departments, weighted the way a slate actually skews — lighting and comp dominate.
+#: Departments, weighted the way a slate actually skews, lighting and comp dominate.
 DEPARTMENTS = (
     ["lighting"] * 30 + ["comp"] * 25 + ["fx"] * 15 +
     ["anim"] * 12 + ["lookdev"] * 10 + ["roto"] * 8
@@ -49,7 +49,7 @@ class Shot:
     priority: str
     total_frames: int
     ingested_on: str          # ISO date
-    due_on: str               # ISO date — the client review this pass is booked against
+    due_on: str               # ISO date, the client review this pass is booked against
     days_to_render: int       # how long the pass takes once it starts
     state: str                # queued | rendering | complete
 
@@ -129,7 +129,7 @@ def _state_on(s: Shot, as_of: date) -> str:
 
 
 def active(as_of: Optional[date] = None, limit: int = 60) -> List[Shot]:
-    """Shots actually rendering today — the only ones worth emitting telemetry for.
+    """Shots actually rendering today: the only ones worth emitting telemetry for.
 
     Capped because live series cost query time on every console page load, and a farm that
     is genuinely rendering 400 passes at once is not a farm, it is a fiction.
