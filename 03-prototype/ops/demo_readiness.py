@@ -70,10 +70,28 @@ def main() -> int:
     if not shots:
         print("  no shot data:", fleet.last_error)
         return 2
-    for s in shots:
+
+    # Print the exceptions and the incident passes; summarise the rest.
+    #
+    # This printed all 63 shots once the slate arrived, which defeats the tool: it exists to
+    # answer "should I roll?" at a glance, and sixty lines of healthy passes is exactly the
+    # noise that makes someone stop reading it.
+    def interesting(x):
+        return x.is_exception or not x.shot.startswith("SH1")
+
+    shown = [x for x in shots if interesting(x)]
+    rest = [x for x in shots if not interesting(x)]
+    for s in shown:
         slip = f"{s.slip_hours:+.2f}h" if s.slip_hours is not None else "   —  "
         print(f"  {s.shot} {s.department:9} {s.status:9} left={s.frames_remaining:>5} "
               f"rate={s.rate_per_min:>5.2f}/min slip={slip}")
+    if rest:
+        by = {}
+        for x in rest:
+            by[x.status] = by.get(x.status, 0) + 1
+        detail = ", ".join(f"{n} {k}" for k, n in sorted(by.items()))
+        print(f"  … and {len(rest)} slate passes on their own multi-day deadlines "
+              f"({detail})")
     sh042 = next((s for s in shots if s.shot == "SH042"), None)
     if not sh042 or sh042.status not in ("critical", "at_risk"):
         ok = False
