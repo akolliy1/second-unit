@@ -145,6 +145,27 @@ So Second Unit bridges through Grafana's **official open-source `mcp-grafana` se
 the same Grafana Cloud stack. In the deployed container that bridge runs beside the app on
 localhost, which removes a public hop and a shared secret rather than adding one.
 
+## The studio slate
+
+A farm with three shots is a toy. The console carries a **slate of ~750 shots, growing by 50
+a day** to roughly 1,400 by the submission deadline — sequences, departments, priorities,
+frame counts and review dates, exactly the shape a mid-size unit publishes.
+
+It grows with **no scheduler, no database and no intervention**, because the catalogue is a
+pure function of the date: `catalog(as_of)` returns the same shots on the same day in every
+process, forever. That also makes duplicate ids impossible — they are keyed to a global
+index — and means the slate keeps filling after we stop touching it.
+
+Live telemetry is deliberately smaller: only the ~60 passes actually rendering get
+Prometheus series, because a completed shot has nothing left to measure and hundreds of idle
+series would slow every page for no information. So the Shots page shows two things and says
+which is which: the **slate** is the production tracker's published work, the **delivery
+forecast** is the farm's live telemetry, and the counts are not meant to match.
+
+Every rendering pass is investigable, and every pass publishes **its own review deadline** —
+a lighting pass racing a review tonight and a roto pass due Friday are not judged against
+the same clock.
+
 ## The world the agent investigates
 
 A studio's render farm isn't something you can borrow, so
@@ -201,6 +222,7 @@ no conflict, and every MCP import dies).
 03-prototype/
   agent/second_unit/   the five stages, schemas, tools, verification, observability
   telemetry/           the render farm: scenario, remote_write/Loki push, seeder
+  agent/second_unit/shots_catalog.py   the slate — a pure function of the date
   web/                 FastAPI console — five pages on a shared layout, SSE, no build step
   dashboards/          two baseline Grafana dashboards, provisioned as JSON
   deploy/              Cloud Run service + job, Cloud Build, Secret Manager wiring

@@ -119,6 +119,23 @@ def fleet_status(deadline_iso: str, *, window: str = "15m") -> List[ShotStatus]:
     rate_by_shot: Dict[str, float] = {
         m["metric"].get("shot", ""): float(m["value"][1]) for m in rates
     }
+
+    # Each shot against ITS OWN deadline.
+    #
+    # The first version measured every pass against a single deadline handed in by the
+    # caller — the incident pass's review, hours away. Slate passes are due in days, so
+    # fifteen of them were reported CRITICAL for the crime of rendering at their normal
+    # speed. A deadline belongs to a shot, so it is read per shot, and the argument is only
+    # a fallback for anything that has not published one.
+    deadline_by_shot: Dict[str, datetime] = {}
+    try:
+        for row in _prom_query("shot_review_deadline_seconds"):
+            sh = row["metric"].get("shot")
+            if sh:
+                deadline_by_shot[sh] = datetime.fromtimestamp(
+                    float(row["value"][1]), timezone.utc)
+    except Exception:  # noqa: BLE001 — fall back to the single deadline
+        pass
     now = datetime.now(timezone.utc)
     try:
         deadline = datetime.fromisoformat(deadline_iso)
@@ -136,24 +153,27 @@ def fleet_status(deadline_iso: str, *, window: str = "15m") -> List[ShotStatus]:
         rate = rate_by_shot.get(shot, 0.0)
 
         if left <= 0:
-            out.append(ShotStatus(shot, dept, 0, rate, None, deadline.isoformat(
-                timespec="minutes"), None, "done", "pass complete"))
+            out.append(ShotStatus(shot, dept, 0, rate, None,
+                deadline_by_shot.get(shot, deadline).isoformat(timespec="minutes"),
+                None, "done", "pass complete"))
             continue
         if rate <= 0:
-            out.append(ShotStatus(shot, dept, left, 0.0, None, deadline.isoformat(
-                timespec="minutes"), None, "unknown",
+            out.append(ShotStatus(shot, dept, left, 0.0, None,
+                deadline_by_shot.get(shot, deadline).isoformat(timespec="minutes"),
+                None, "unknown",
                 "no completions in the last %s — stalled or no data" % window))
             continue
 
         hours = left / rate / 60.0
         eta = now + timedelta(hours=hours)
-        slip = (eta - deadline).total_seconds() / 3600.0
+        own = deadline_by_shot.get(shot, deadline)
+        slip = (eta - own).total_seconds() / 3600.0
         status = ("critical" if slip > CRITICAL_HOURS
                   else "at_risk" if slip > AT_RISK_HOURS
                   else "on_track")
         out.append(ShotStatus(
             shot, dept, left, round(rate, 2), eta.isoformat(timespec="minutes"),
-            deadline.isoformat(timespec="minutes"), round(slip, 2), status,
+            own.isoformat(timespec="minutes"), round(slip, 2), status,
         ))
 
     # Worst first: a producer reads top-down and should not have to scan.

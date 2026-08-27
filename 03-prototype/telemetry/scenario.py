@@ -222,6 +222,18 @@ class Farm:
                          "node": "pool", "shot": sh.shot,
                          "department": sh.department, "farm": "vancouver",
                          "job": "render-scheduler"}, [(done, ts_ms)]))
+            # Each pass publishes its OWN review deadline.
+            #
+            # Without this the console judged every shot against the incident pass's
+            # deadline, which is hours away — so a roto pass legitimately due in three days
+            # was marked CRITICAL for being slow against a review it has nothing to do with.
+            # Fifteen shots on fire for no reason is not a dashboard, it is noise.
+            from datetime import datetime as _dt, time as _t
+            due = _dt.combine(_dt.fromisoformat(sh.due_on).date(), _t(hour=18))
+            out.append(({"__name__": "shot_review_deadline_seconds",
+                         "shot": sh.shot, "department": sh.department,
+                         "farm": "vancouver", "job": "production-tracker"},
+                        [(round(due.timestamp()), ts_ms)]))
         return out
 
     @staticmethod
