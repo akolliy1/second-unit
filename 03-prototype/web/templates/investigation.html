@@ -1243,7 +1243,10 @@ $("btnBrief").addEventListener("click", async () => {
 
 /* ---------------------------------------------------------- subject switcher */
 const SUBJECT = {
-  shot: (new URLSearchParams(location.search).get("shot") || "{{ subject_shot }}").toUpperCase(),
+  /* The server resolved this already, via valid_shot(): any real id is accepted, incident
+     or catalogue, and only a nonexistent one falls back. Re-reading the raw query param
+     here would discard that validation and let an arbitrary string become the subject. */
+  shot: "{{ subject_shot }}".toUpperCase(),
   recorded: "{{ recorded_shot }}",
   shots: [],
 };
@@ -1254,16 +1257,54 @@ STATE.runShot = "{{ recorded_shot }}";
 
 function subjectRow() { return SUBJECT.shots.find((s) => s.shot === SUBJECT.shot); }
 
+function subjectOptions() {
+  /* 63 flat options in farm-sweep order is a list you cannot triage from: it opens over the
+     whole page, nothing says which shot needs a human, and a specific shot is unfindable.
+     Grouped by what the operator is deciding between, with the reason on the label.
+     Attention first and worst-first inside it; the rest by id, because that is how someone
+     hunting a particular shot scans. Option text still starts with the id, so a browser's
+     own type-ahead ("SH1721") jumps straight there. */
+  const shots = SUBJECT.shots.slice();
+  const slip = (s) => (typeof s.slip_hours === "number" ? s.slip_hours : -Infinity);
+  const attention = (s) => s.status === "critical" || s.status === "at_risk";
+  const byId = (a, b) => a.shot.localeCompare(b.shot);
+  const label = (s) => {
+    let t = s.shot + " · " + s.department;
+    if (attention(s)) t += slip(s) > 0 ? " · " + slip(s).toFixed(1) + "h late" : " · tight";
+    else if (s.status === "done") t += " · complete";
+    else if (s.status === "unknown") t += " · no signal";
+    return t;
+  };
+  const groups = [
+    ["Needs attention", shots.filter(attention).sort((a, b) => slip(b) - slip(a))],
+    ["Rendering, on track", shots.filter((s) => s.status === "on_track").sort(byId)],
+    ["Complete or no live signal",
+     shots.filter((s) => !attention(s) && s.status !== "on_track").sort(byId)],
+  ];
+  let html = "";
+  for (const [name, list] of groups) {
+    if (!list.length) continue;
+    html += '<optgroup label="' + esc(name) + " (" + list.length + ')">' +
+      list.map((s) => '<option value="' + esc(s.shot) + '">' + esc(label(s)) + "</option>").join("") +
+      "</optgroup>";
+  }
+  /* A shot can be selected that the farm is not working on right now, by deep link into the
+     catalogue. With no option for it the select falls back to its first entry and then shows
+     someone else's shot under this shot's heading, which is the exact class of bug the
+     mismatch banner exists to prevent. */
+  if (SUBJECT.shot && !shots.some((s) => s.shot === SUBJECT.shot)) {
+    html = '<optgroup label="Selected"><option value="' + esc(SUBJECT.shot) + '">' +
+           esc(SUBJECT.shot) + ' · not on the farm right now</option></optgroup>' + html;
+  }
+  return html;
+}
+
 function renderSubject() {
   /* The footer named the recording's shot no matter what was selected, so a page headed
      "no investigation for SH043" still footed "shot SH042". */
   const f = $("fShot"); if (f) f.textContent = SUBJECT.shot;
   const sel = $("subjSel");
-  if (SUBJECT.shots.length) {
-    sel.innerHTML = SUBJECT.shots.map((s) =>
-      '<option value="' + esc(s.shot) + '">' + esc(s.shot) + " · " + esc(s.department) +
-      "</option>").join("");
-  }
+  if (SUBJECT.shots.length || SUBJECT.shot) sel.innerHTML = subjectOptions();
   sel.value = SUBJECT.shot;
   const row = subjectRow();
   const pill = $("subjStatus");
@@ -1315,9 +1356,10 @@ $("btnRunSubject").addEventListener("click", () => $("btnRun").click());
     SUBJECT.shots = d.shots || [];
     if (d.error) status("sweep error", "bad");
   } catch (_) { SUBJECT.shots = []; }
-  if (SUBJECT.shots.length && !SUBJECT.shots.some((s) => s.shot === SUBJECT.shot)) {
-    SUBJECT.shot = SUBJECT.shots[0].shot;      // a deep link to a shot that no longer exists
-  }
+  /* No substitution. A shot that is real but not on the farm right now keeps the subject
+     it was asked about: the switcher labels it "not on the farm right now" and the mismatch
+     banner offers to run the agents on it. Swapping in a different shot answered a question
+     nobody asked, under the heading of the one they did. */
   renderSubject();
 })();
 
