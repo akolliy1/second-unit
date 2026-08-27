@@ -1,19 +1,29 @@
 {% extends "_base.html" %}
 {#
-  Overview — "what needs me?", answered before the fold.
+  Overview — a summary, not a list.
 
-  Four zones, in the order a producer's eye moves: the fleet strip (everything, worst
-  first), the one exception in the reader's own language, the farm's vitals, then the
-  agent's own honesty score. Nothing here calls a model: every number on this page comes
-  from `/api/fleet`, `/api/vitals` and `/api/agent/metrics`, which are Prometheus queries
-  and arithmetic. That is why the page can be polled at all.
+  This page used to render every shot `/api/fleet` returned. At 63 shots that was a
+  ~5,400px scroll of overwhelmingly healthy rows, and it answered neither of the two
+  questions the landing page exists to answer:
 
-  Two rules this page exists to obey:
-    * An empty result NEVER reads as good news. A failed sweep, a metric that returned no
-      series, and a farm with genuinely no work in it are three different states and get
-      three different messages.
+      "what needs me?"   and   "what is the state of the platform?"
+
+  So the page is now four bounded summaries, each with a link to the page that owns the
+  detail. Nothing here is unbounded: the attention list is capped at 5 exception rows plus
+  3 unmeasurable ones, the department distribution is one bar, and everything else is a
+  tile with a number and a provenance line. Growth in the farm changes the numbers, never
+  the height.
+
+  Three rules the page exists to obey:
+    * An empty result NEVER reads as good news. A failed sweep, an empty sweep, and a farm
+      with genuinely nothing wrong are three different states with three different messages.
     * A judge arriving mid-repair (the scenario loops every ~4h) must be told the farm is
       currently healthy and when the next fault lands, not left thinking the demo is dead.
+    * Every number names its source. No orphan figures.
+
+  Nothing on this page calls a model. Every value comes from `/api/fleet`, `/api/vitals`,
+  `/api/shots`, `/api/shots/facets` and `/api/agent/metrics` — Prometheus queries, the
+  shot catalogue, and arithmetic. That is why it can be polled at all.
 #}
 
 {% block head_extra %}
@@ -27,7 +37,8 @@
 
 /* ------------------------------------------------------------------ notices
    Banners for the states that must never be silent: a failed sweep, an empty sweep, a
-   placeholder deadline. Styled loud on purpose — every forecast below depends on them. */
+   placeholder deadline, a false success. Loud on purpose — every forecast below them
+   depends on them being read. */
 .note{display:flex; gap:.6rem; align-items:flex-start; padding:.7rem .85rem; margin:0 0 .6rem;
   border-radius:8px; border:1px solid var(--line2); background:var(--panel);
   font-size:.84rem; color:var(--ink2)}
@@ -40,11 +51,23 @@
 .note.ok{border-color:var(--line2)}
 .note.ok .gl{color:var(--ok)}
 .note code{font-family:var(--mono); font-size:.76rem; color:var(--ink)}
+.note :last-child{margin-bottom:0}
 
-/* --------------------------------------------------------------- fleet strip
+/* --------------------------------------------------------- section headers
+   The h2 carries the section's own drill-down link, so every summary states where its
+   detail lives without spending a row on it. */
+.shead{display:flex; align-items:baseline; gap:.6rem; flex-wrap:wrap; margin:0 0 .55rem}
+.shead h2{margin:0; font-size:.74rem; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--ink3); font-weight:650}
+.shead .more{margin-left:auto; font-size:.78rem; text-decoration:none; white-space:nowrap}
+.shead .more:hover{text-decoration:underline}
+
+/* ------------------------------------------------------------ attention rows
    Rows, not a <table>: the cells reflow to one column on a phone and a table cannot.
    Labels live inside each cell rather than in a header row, so a row stays readable at
-   any width and there is no header to fall out of sync with the data. */
+   any width and there is no header to fall out of sync with the data.
+
+   This list is capped. It is a triage queue, not an inventory. */
 .fwrap{display:flex; flex-direction:column; gap:.4rem}
 .frow{
   display:grid; gap:.35rem .9rem; align-items:center;
@@ -64,7 +87,7 @@
 .frow .note-line{grid-column:1/-1; color:var(--ink3); font-size:.76rem}
 
 /* Status is carried three ways at once — left border, pill colour, glyph — because a
-   producer scanning this strip should not have to read a word to find the fire. */
+   producer scanning this queue should not have to read a word to find the fire. */
 .frow[data-s="critical"]{border-left-color:var(--crit); background:color-mix(in srgb, var(--crit-dim) 22%, var(--panel))}
 .frow[data-s="at_risk"]{border-left-color:var(--amber)}
 .frow[data-s="unknown"]{border-left-color:var(--violet)}
@@ -82,6 +105,17 @@
 .skel{color:var(--ink3); font-family:var(--mono); font-size:.8rem; display:block}
 .foot{font-size:.76rem; margin:.55rem 0 0}
 .foot code{font-family:var(--mono); font-size:.74rem}
+/* The overflow line. It is a first-class part of the pattern, not a footnote: a capped list
+   that does not say what it is hiding is a lie by omission. */
+.spill{display:flex; align-items:center; gap:.5rem; flex-wrap:wrap;
+  margin:.45rem 0 0; font-size:.82rem}
+.spill a{text-decoration:none; font-weight:600}
+.spill a:hover{text-decoration:underline}
+.spill .cnt{font-family:var(--mono); color:var(--ink3)}
+/* Unmeasurable shots are not exceptions and are not healthy either. They get their own
+   bounded block so their note is visible instead of averaged away. */
+.subhead{margin:.85rem 0 .35rem; font-size:.7rem; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--ink3); font-weight:650}
 
 @media (max-width:820px){
   /* Two columns of metrics rather than four: at this width four monospace numbers
@@ -92,14 +126,28 @@
   .frow .pill{grid-column:2; justify-self:start}
 }
 
+/* ---------------------------------------------------------- all-clear card
+   The state a mid-repair judge lands in. It has to carry three facts — how many shots are
+   watched, that they are all clear, and when the next fault arrives — or a calm farm reads
+   as a broken page. */
+.clear{border-left:4px solid var(--ok)}
+.clear h3{margin:.45rem 0 .3rem; font-size:1.12rem; letter-spacing:-.01em}
+.clear p{margin:0 0 .55rem; color:var(--ink2); font-size:.88rem; max-width:74ch}
+.clear p:last-child{margin-bottom:0}
+.cstats{display:flex; gap:1.4rem; flex-wrap:wrap; margin:.6rem 0 0}
+.cstats div{min-width:0}
+.cstats .n{display:block; font-family:var(--mono); font-size:1.15rem; color:var(--ink)}
+.cstats .l{display:block; font-size:.7rem; color:var(--ink3); text-transform:uppercase;
+  letter-spacing:.07em}
+
 /* ------------------------------------------------------------ incident card */
 .inc{border-left:4px solid var(--line2)}
 .inc[data-sev="critical"]{border-left-color:var(--crit)}
 .inc[data-sev="at_risk"]{border-left-color:var(--amber)}
 .inc[data-sev="clear"]{border-left-color:var(--ok)}
-.inc h3{margin:.5rem 0 .35rem; font-size:1.24rem; line-height:1.25; letter-spacing:-.015em}
-.inc .isub{margin:0 0 .7rem; color:var(--ink2); font-size:.92rem; max-width:62ch}
-.ifacts{list-style:none; margin:0 0 .9rem; padding:0; display:grid; gap:.3rem .9rem;
+.inc h3{margin:.5rem 0 .35rem; font-size:1.2rem; line-height:1.25; letter-spacing:-.015em}
+.inc .isub{margin:0 0 .7rem; color:var(--ink2); font-size:.9rem; max-width:66ch}
+.ifacts{list-style:none; margin:0 0 .8rem; padding:0; display:grid; gap:.3rem .9rem;
   grid-template-columns:repeat(2,minmax(0,1fr))}
 @media (max-width:640px){ .ifacts{grid-template-columns:minmax(0,1fr)} }
 .ifacts li{display:flex; gap:.5rem; font-size:.83rem; min-width:0}
@@ -115,180 +163,338 @@
 .iact{display:flex; align-items:center; gap:.75rem; flex-wrap:wrap}
 .iact .hint{color:var(--ink3); font-size:.78rem}
 
-/* ---------------------------------------------------------------- kpi tiles */
-.kpi .k{display:block; color:var(--ink3); font-size:.66rem; text-transform:uppercase;
-  letter-spacing:.09em; margin-bottom:.3rem}
-.kpi .v{display:block; font-size:1.5rem; font-weight:650; letter-spacing:-.02em;
-  line-height:1.1; overflow-wrap:anywhere}
-.kpi .u{font-size:.76rem; color:var(--ink3); font-weight:400}
-.kpi .s{display:block; color:var(--ink3); font-size:.75rem; margin-top:.25rem}
-.kpi .v.bad{color:var(--crit)}
-.kpi .v.ok{color:var(--ok)}
-.kpi .v.na{color:var(--ink3); font-size:1rem; font-weight:500}
+/* --------------------------------------------------------- persona framing
+   All three framings are rendered once and selected in CSS off `html[data-persona]`.
 
-/* --------------------------------------------------------------- agent health */
-.claims{display:grid; gap:.5rem; grid-template-columns:repeat(4,minmax(0,1fr)); margin:.7rem 0 0}
-@media (max-width:700px){ .claims{grid-template-columns:repeat(2,minmax(0,1fr))} }
-.claim{border:1px solid var(--line); border-radius:8px; padding:.55rem .65rem; background:var(--bg2)}
-.claim .cn{display:block; font-family:var(--mono); font-size:1.25rem; line-height:1.2}
-.claim .cl{display:block; font-size:.7rem; color:var(--ink3); text-transform:uppercase;
-  letter-spacing:.06em}
-.claim .cd{display:block; font-size:.73rem; color:var(--ink3); margin-top:.2rem}
-/* false_success is the number this project earned; when it is non-zero it gets the loudest
-   treatment on the page, and it is never collapsed or hidden behind a link. */
+   Why not re-render on the persona event: the framings differ in wording, not in facts, so
+   a JS re-render buys nothing and costs a full DOM replacement of the lead card every time
+   the chip changes. Doing it in CSS also makes the guarantee structural rather than a thing
+   a future edit can forget — a Producer physically cannot be shown the PromQL block,
+   because it is not in their frame. */
+.pframe,.pframei{display:none}
+html[data-persona="td"] .pframe[data-p="td"],
+html[data-persona="supervisor"] .pframe[data-p="supervisor"],
+html[data-persona="producer"] .pframe[data-p="producer"]{display:block}
+html[data-persona="td"] .pframei[data-p="td"],
+html[data-persona="supervisor"] .pframei[data-p="supervisor"],
+html[data-persona="producer"] .pframei[data-p="producer"]{display:inline}
+/* If the persona attribute is ever something we do not know, show the TD frame rather than
+   an empty card: the specific framing is the safe default, silence is not. */
+html:not([data-persona="td"]):not([data-persona="supervisor"]):not([data-persona="producer"])
+  .pframe[data-p="td"]{display:block}
+html:not([data-persona="td"]):not([data-persona="supervisor"]):not([data-persona="producer"])
+  .pframei[data-p="td"]{display:inline}
+
+/* -------------------------------------------------------------- glance tiles
+   Four tiles, one per thing a reader might mean by "the platform": the slate, the farm,
+   the shape of the work, and the agent. Each is a summary with a link, and each states its
+   own source line so no number on this page is an orphan. */
+.tile{display:flex; flex-direction:column; min-width:0}
+.tile > h3{margin:0 0 .1rem; font-size:.9rem; letter-spacing:-.01em}
+.tile .lede{margin:0 0 .7rem; color:var(--ink3); font-size:.76rem}
+.tile .big{display:flex; align-items:baseline; gap:.45rem; margin:0 0 .55rem}
+.tile .big .n{font-family:var(--mono); font-size:1.75rem; line-height:1;
+  letter-spacing:-.02em; color:var(--ink)}
+.tile .big .u{font-size:.78rem; color:var(--ink3)}
+.tile .big .n.na{font-size:1rem; color:var(--ink3); font-family:var(--sans)}
+.tile .body{flex:1 1 auto; min-width:0}
+/* Sub-figures: label left, value right, monospace so columns of digits line up. Capped by
+   construction — four rows per tile, never a list. */
+.mrows{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:.28rem}
+.mrows li{display:flex; align-items:baseline; gap:.6rem; font-size:.82rem; min-width:0}
+.mrows .l{color:var(--ink2); min-width:0; overflow-wrap:anywhere}
+.mrows .fill{flex:1 1 auto; border-bottom:1px dotted var(--line2); transform:translateY(-.22rem)}
+.mrows .v{font-family:var(--mono); color:var(--ink); white-space:nowrap}
+.mrows .v.bad{color:var(--crit); font-weight:650}
+.mrows .v.ok{color:var(--ok)}
+.mrows .v.na{color:var(--ink3)}
+/* The provenance line. Present on every tile, always the last thing in it. */
+.tile .src{margin:.8rem 0 0; padding-top:.55rem; border-top:1px solid var(--line);
+  display:flex; align-items:baseline; gap:.6rem; flex-wrap:wrap;
+  font-size:.72rem; color:var(--ink3)}
+.tile .src code{font-family:var(--mono); font-size:.7rem; color:var(--ink2);
+  overflow-wrap:anywhere}
+.tile .src a{margin-left:auto; font-size:.76rem; font-weight:600; text-decoration:none;
+  white-space:nowrap}
+.tile .src a:hover{text-decoration:underline}
+
+/* ------------------------------------------------------------ department bar
+   A stacked bar built from divs. Not a chart library: six proportions do not justify a
+   dependency, and a div bar cannot fail to load. The legend carries the numbers, because a
+   bar without them is decoration. */
+.dbar{display:flex; height:12px; border-radius:6px; overflow:hidden; background:var(--bg2);
+  border:1px solid var(--line); margin:0 0 .65rem}
+.dbar i{display:block; height:100%; min-width:2px}
+.dlegend{list-style:none; margin:0; padding:0; display:grid; gap:.22rem .9rem;
+  grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (max-width:420px){ .dlegend{grid-template-columns:minmax(0,1fr)} }
+.dlegend li{display:flex; align-items:baseline; gap:.4rem; font-size:.78rem; min-width:0}
+.dlegend .sw{width:8px; height:8px; border-radius:2px; flex:0 0 8px; transform:translateY(-.05rem)}
+.dlegend .dn{color:var(--ink2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.dlegend .dv{margin-left:auto; font-family:var(--mono); color:var(--ink3); white-space:nowrap}
+
+/* ------------------------------------------------------------- write claims
+   Four outcomes, 2x2 inside the agent tile. false_success is the number this project
+   earned the right to show; when it is non-zero it gets the loudest treatment on the page
+   and it is never collapsed, hidden, or left to the /agent page. */
+.claims{display:grid; gap:.4rem; grid-template-columns:repeat(2,minmax(0,1fr)); margin:.1rem 0 0}
+.claim{border:1px solid var(--line); border-radius:7px; padding:.4rem .55rem; background:var(--bg2);
+  min-width:0}
+.claim .cn{display:block; font-family:var(--mono); font-size:1.05rem; line-height:1.2}
+.claim .cl{display:block; font-size:.66rem; color:var(--ink3); text-transform:uppercase;
+  letter-spacing:.05em; overflow-wrap:anywhere}
 .claim.alarm{border-color:var(--crit); background:color-mix(in srgb, var(--crit-dim) 45%, var(--bg2))}
 .claim.alarm .cn{color:var(--crit); font-weight:700}
 .claim.zero .cn{color:var(--ok)}
-.arow{display:flex; align-items:baseline; gap:.6rem; flex-wrap:wrap}
-.arow .big{font-family:var(--mono); font-size:1.35rem}
+
+/* ------------------------------------------------------------ scenario strip */
+.scen{display:grid; gap:.75rem 1.4rem; grid-template-columns:repeat(3,minmax(0,1fr));
+  align-items:start}
+@media (max-width:700px){ .scen{grid-template-columns:minmax(0,1fr)} }
+.scen .k{display:block; font-size:.66rem; color:var(--ink3); text-transform:uppercase;
+  letter-spacing:.08em; margin-bottom:.18rem}
+.scen .v{display:block; font-family:var(--mono); font-size:1.05rem; color:var(--ink);
+  overflow-wrap:anywhere}
+.scen .v.warnv{color:var(--amber)}
+.scen .v.okv{color:var(--ok)}
+.scen .d{display:block; font-size:.75rem; color:var(--ink3); margin-top:.15rem}
+/* The loop track: where in the ~4h scenario we currently are. One div, no library. */
+.track{position:relative; height:6px; border-radius:3px; background:var(--bg2);
+  border:1px solid var(--line); margin:.9rem 0 .4rem; overflow:hidden}
+.track i{position:absolute; top:0; bottom:0; left:0; background:var(--line2)}
+.track b{position:absolute; top:-3px; width:2px; height:12px; background:var(--amber)}
+.scenfoot{margin:.35rem 0 0; font-size:.76rem; color:var(--ink3)}
 {% endblock %}
 
 {% block content %}
 
-<!-- ======================================================= 1. FLEET TRIAGE -->
-<section class="sect" id="secFleet">
-  <h2>Fleet triage · every shot in flight</h2>
-  <div id="fleetNotes"></div>
-  <div class="fwrap" id="fleetRows">
-    <span class="skel">sweeping the farm…</span>
+<!-- ========================================================= 1. ATTENTION
+     Exceptions only, capped. Everything else is a count and a link. -->
+<section class="sect" id="secAttn">
+  <div class="shead">
+    <h2>Attention · what needs a human</h2>
+    <a class="more" href="/shots?tab=forecast" id="attnAll">All forecasts →</a>
   </div>
-  <p class="dim foot">
-    One Prometheus query per series, arithmetic in Python (<code>fleet.py</code>) — no model
-    is involved, so this strip cannot invent a shot or an ETA. Exceptions are sorted first
-    by the server. Refreshed every 20s.
-  </p>
+  <div id="attnNotes"></div>
+  <div id="attnBody"><span class="skel">sweeping the farm…</span></div>
 </section>
 
 <!-- ==================================================== 2. ACTIVE INCIDENT -->
 <section class="sect">
-  <h2>Active incident · framed for <span id="incWho">you</span></h2>
+  <div class="shead">
+    <h2>Active incident · framed for
+      <span class="pframei" data-p="td">a pipeline TD</span
+      ><span class="pframei" data-p="supervisor">a VFX supervisor</span
+      ><span class="pframei" data-p="producer">a producer</span></h2>
+    <a class="more" href="/start">Change lens →</a>
+  </div>
   <div class="card inc" id="incCard" data-sev="none">
-    <div class="arow">
+    <div class="iact" style="margin-bottom:.1rem">
       <span class="pill" id="incPill" data-s="unknown">reading</span>
       <span class="dim mono" id="incMeta">waiting for the first sweep</span>
     </div>
-    <h3 id="incHead">Reading the farm…</h3>
-    <p class="isub" id="incSub"></p>
-    <ul class="ifacts" id="incFacts"></ul>
+    <div id="incFrames"></div>
     <div class="iact">
-      <a class="btn primary" href="/investigation" id="incBtn">Investigate this shot</a>
+      <a class="btn primary" href="/investigation" id="incBtn">Investigate</a>
       <span class="hint" id="incHint"></span>
     </div>
   </div>
 </section>
 
-<!-- ======================================================== 3. FARM VITALS -->
+<!-- ============================================== 3. PLATFORM AT A GLANCE -->
 <section class="sect">
-  <h2>Farm vitals</h2>
-  <div id="cycleNote"></div>
-  <div class="grid g4">
-    <div class="card kpi"><span class="k">Throughput now</span>
-      <span class="v" id="vThr">—</span><span class="s">frames/min, 15m rate, whole farm</span></div>
-    <div class="card kpi"><span class="k">Lighting queue</span>
-      <span class="v" id="vQueue">—</span><span class="s" id="vQueueSub">frames waiting</span></div>
-    <div class="card kpi"><span class="k">Nodes with faults</span>
-      <span class="v" id="vFaulty">—</span><span class="s" id="vFaultySub">GPU ECC errors, last 30m</span></div>
-    <div class="card kpi"><span class="k">Hottest GPU</span>
-      <span class="v" id="vHot">—</span><span class="s" id="vHotSub">topk(1) by temperature</span></div>
+  <div class="shead">
+    <h2>Platform at a glance</h2>
+    <a class="more" href="/shots?tab=slate">Open the slate →</a>
+  </div>
+  <div id="platNotes"></div>
+  <div class="grid g2">
+
+    <div class="card tile" id="tileSlate">
+      <h3>Slate</h3>
+      <p class="lede">The catalogue — every shot the production has ingested, not just the
+        ones rendering now.</p>
+      <div class="big"><span class="n" id="slTotal">—</span><span class="u">shots total</span></div>
+      <div class="body">
+        <ul class="mrows" id="slRows">
+          <li><span class="l">reading the catalogue…</span></li>
+        </ul>
+      </div>
+      <p class="src"><code>/api/shots</code> → <code>summary</code>
+        <a href="/shots?tab=slate">Slate →</a></p>
+    </div>
+
+    <div class="card tile" id="tileFarm">
+      <h3>Farm</h3>
+      <p class="lede">The render farm right now: what is being measured, how fast it is
+        going, and what is broken.</p>
+      <div class="big"><span class="n" id="fmWatched">—</span><span class="u">shots with live telemetry</span></div>
+      <div class="body">
+        <ul class="mrows" id="fmRows">
+          <li><span class="l">reading vitals…</span></li>
+        </ul>
+      </div>
+      <p class="src"><code>/api/fleet</code> + <code>/api/vitals</code>
+        <a href="/shots?tab=forecast">Forecast →</a></p>
+    </div>
+
+    <div class="card tile" id="tileDept">
+      <h3>Departments</h3>
+      <p class="lede">How the slate is distributed. Where the work actually is, which is not
+        the same as where the fires are.</p>
+      <div class="body" id="dptBody">
+        <span class="skel">reading facets…</span>
+      </div>
+      <p class="src"><code>/api/shots/facets</code> → <code>department</code>
+        <a href="/shots?tab=slate">Filter by department →</a></p>
+    </div>
+
+    <div class="card tile" id="tileAgent">
+      <h3>Agent</h3>
+      <p class="lede">What the agent did, and how much of what it said it wrote actually
+        turned up in the stack.</p>
+      <div class="big"><span class="n" id="agCalls">—</span><span class="u" id="agCallsU">tool calls</span></div>
+      <div class="body" id="agBody">
+        <span class="skel">reading agent telemetry…</span>
+      </div>
+      <p class="src"><code>/api/agent/metrics</code> → <code>write_claims</code>
+        <a href="/agent">Agent telemetry →</a></p>
+    </div>
+
   </div>
 </section>
 
-<!-- ======================================================== 4. AGENT HEALTH -->
+<!-- ======================================================= 4. SCENARIO STATE -->
 <section class="sect">
-  <h2>Agent health · does its own reporting hold up?</h2>
-  <div class="card">
-    <div class="arow">
-      <span class="big" id="aCalls">—</span>
-      <span class="dim">MCP tool calls recorded<span id="aCallsBy"></span></span>
+  <div class="shead">
+    <h2>Scenario state · why the farm looks the way it does</h2>
+  </div>
+  <div class="card" id="scenCard">
+    <div class="scen">
+      <div><span class="k">Cycle phase</span><span class="v" id="scPhase">—</span>
+        <span class="d" id="scPhaseD">from /api/vitals cycle_phase</span></div>
+      <div><span class="k">Minute in loop</span><span class="v" id="scMin">—</span>
+        <span class="d">of ~240, from /api/vitals cycle_minute</span></div>
+      <div><span class="k">Next fault injected</span><span class="v" id="scNext">—</span>
+        <span class="d" id="scNextD">derived from the loop position</span></div>
     </div>
-    <div id="aNotes"></div>
-    <div class="claims" id="aClaims"></div>
-    <div class="iact" style="margin-top:.9rem">
-      <a class="btn" href="/agent">Open agent telemetry</a>
-      <span class="hint">Write claims are verified against the stack after the run, not
-        taken from the agent's own summary.</span>
-    </div>
+    <div class="track" id="scTrack" hidden><i id="scFill"></i><b id="scMark"></b></div>
+    <p class="scenfoot" id="scFoot">The demo farm replays a ~4h incident loop. A calm farm
+      mid-loop is the scenario working, not the product failing.</p>
   </div>
 </section>
 {% endblock %}
 
 {% block docs %}
 <h3>Overview</h3>
-<p>The triage view: every shot in flight, the one exception in your own language, the farm's
-current vitals, and whether the agent's last run told the truth about what it wrote.</p>
+<p>A summary page, deliberately. It answers two questions — <b>what needs a human</b>, and
+<b>what is the state of the platform</b> — and links to the page that owns each detail. It
+does not list the farm: <code>/shots</code> does that, with paging, filters and sorting
+built for it.</p>
 
-<h4>Fleet triage strip</h4>
-<p><code>GET /api/fleet</code>. Each row is one shot with a live series in Prometheus. The
-sweep is plain Python over two instant queries — <code>shot_frames_remaining</code> and
+<h4>Why the lists are capped</h4>
+<p>This page previously rendered every shot in <code>/api/fleet</code>. At 63 in-flight
+passes that was roughly 5,400px of scroll, almost all of it healthy rows, and it made the
+one thing that needed attention harder to find rather than easier. Caps here are a
+correctness property, not a layout preference:</p>
+<ul>
+  <li><b>Attention</b> — at most <b>5</b> exception rows, worst first, plus at most <b>3</b>
+      unmeasurable ones. Anything beyond that becomes "+N more →".</li>
+  <li><b>Departments</b> — one stacked bar and its legend; six departments, not six hundred
+      rows.</li>
+  <li><b>Everything else</b> — a count and a link. No section grows with the farm.</li>
+</ul>
+<p class="dnote">Every capped list prints what it is hiding and links to the full view. A cap
+that does not say what it dropped is a lie by omission, and the count comes from the API's
+own total rather than from the rows we chose to draw.</p>
+
+<h4>Attention</h4>
+<p><code>GET /api/fleet</code>, every 20s. The sweep is plain Python over two instant
+queries — <code>shot_frames_remaining</code> and
 <code>sum by (shot) (rate(render_frames_completed_total[15m])) * 60</code> — then division:
 <code>frames ÷ rate</code> gives an ETA, and the ETA minus the published review deadline
-gives the slip. No language model is in that path, so the strip cannot hallucinate a shot,
-invent an ETA, or disagree with itself between refreshes.</p>
+gives the slip. No language model is in that path, so this section cannot hallucinate a
+shot, invent an ETA, or disagree with itself between refreshes. The server already sorts
+worst-first, so the cap takes the five worst rather than the first five it happened to
+receive.</p>
 <ul>
   <li><b>critical</b> — forecast more than 1h past the deadline</li>
   <li><b>at risk</b> — forecast past the deadline at all</li>
-  <li><b>on track</b> — forecast to land before it</li>
-  <li><b>done</b> — zero frames remaining on that pass</li>
-  <li><b>unknown</b> — frames remain but nothing completed in the last 15m: stalled, or the
-      metric stopped arriving. Deliberately not called "on track".</li>
+  <li><b>unknown</b> — frames remain but the rate is unusable: nothing completed in the last
+      15m, or an implausible rate from a counter reset. Shown with its
+      <code>note</code>, never folded into "on track" and never hidden.</li>
+  <li><b>on track / done</b> — counted in the all-clear line, not listed. Their detail lives
+      on <code>/shots?tab=forecast</code>.</li>
 </ul>
-<p class="dnote">An empty strip is never rendered as calm. If the sweep failed, the reason
-from <code>fleet.last_error</code> is printed here instead; if it succeeded and returned
-nothing, that is stated as "no shots in flight" — which for this farm most likely means the
-seeder stopped.</p>
+<p class="dnote">An empty section is never rendered as calm. A failed sweep prints
+<code>fleet.last_error</code>; a sweep that succeeded and returned nothing says so and
+explains that for this farm it means <code>shot_frames_remaining</code> has no series, i.e.
+the seeder stopped. When there are genuinely no exceptions, the all-clear states how many
+shots are being watched and when the next fault lands — a calm farm must not look like a
+broken page.</p>
 <p class="dnote">If the review deadline could not be read from
 <code>shot_review_deadline_seconds</code>, the API says so via
-<code>deadline_is_placeholder</code> and a warning appears above the strip. Every ETA and
-slip on this page is then measured against a made-up deadline and none of them are
+<code>deadline_is_placeholder</code> and a warning appears above everything else. Every ETA
+and slip on the page is then measured against a made-up deadline and none of them are
 schedule facts.</p>
 
 <h4>Active incident</h4>
 <p>The worst exception from the same <code>/api/fleet</code> payload — no second data
-source, so the card and the strip cannot contradict each other. The wording changes with
-the persona in the top bar: a Producer gets the schedule consequence and no PromQL, a
-Supervisor gets the shot and the cause, a Pipeline TD gets nodes, rates and the exact
-queries. The finding underneath is identical; only the framing differs.</p>
-<p>When no shot is an exception, the card says so and explains where the looping scenario
-currently is, rather than showing an empty box.</p>
+source, so the card and the attention list cannot contradict each other. All three framings
+are rendered once and selected in CSS from <code>html[data-persona]</code>: a Producer gets
+the schedule consequence in plain language and no metric names, a Supervisor gets the shot
+and the cause, a Pipeline TD gets nodes, rates and the exact queries. The finding underneath
+is identical; only the wording differs.</p>
 
-<h4>Farm vitals</h4>
-<p><code>GET /api/vitals</code>, one instant query per number:</p>
+<h4>Platform at a glance</h4>
+<p>Four tiles, each with its source printed on it:</p>
 <ul>
-  <li><b>Throughput</b> — <code>sum(rate(render_frames_completed_total[15m])) * 60</code></li>
-  <li><b>Lighting queue</b> — <code>render_queue_depth{queue="lighting"}</code>; ~18 is
-      this farm's healthy depth</li>
-  <li><b>Nodes with faults</b> —
-      <code>sum by (node) (increase(render_node_gpu_ecc_errors_total[30m])) &gt; 0</code>.
-      Uncorrectable ECC is the injected fault, so an empty list here is a real signal</li>
-  <li><b>Hottest GPU</b> — <code>topk(1, render_node_gpu_temp_celsius)</code>; context, not
-      an alert</li>
+  <li><b>Slate</b> — <code>GET /api/shots</code> → <code>summary</code>: total,
+      <code>ingested_today</code>, and <code>by_state</code> (rendering vs complete). The
+      catalogue, not Prometheus — it is hundreds of shots and grows daily.</li>
+  <li><b>Farm</b> — <code>GET /api/fleet</code> for the number of shots with live telemetry,
+      then <code>GET /api/vitals</code> for
+      <code>sum(rate(render_frames_completed_total[15m])) * 60</code>,
+      <code>sum by (node) (increase(render_node_gpu_ecc_errors_total[30m])) &gt; 0</code>
+      and <code>render_queue_depth{queue="lighting"}</code> (~18 is this farm's healthy
+      depth; 40+ means frames are piling up faster than the pool clears them).</li>
+  <li><b>Departments</b> — <code>GET /api/shots/facets</code> → <code>department</code>,
+      drawn as a stacked bar of divs. No chart library: six proportions do not justify a
+      dependency, and a div cannot fail to load.</li>
+  <li><b>Agent</b> — <code>GET /api/agent/metrics</code>: <code>tool_calls</code> summed
+      across stages, and the <code>write_claims</code> breakdown.</li>
 </ul>
-<p><b>Cycle phase</b> is derived from the deadline metric, not from a wall clock: the demo
-farm replays a ~4h incident loop. During <code>repaired</code>, <code>restarting</code> and
-<code>pre-fault</code> the farm is genuinely healthy and the banner says when the next fault
-lands. A calm farm mid-loop is the scenario working, not the product failing.</p>
-
-<h4>Agent health</h4>
-<p><code>GET /api/agent/metrics</code>, read back out of the same Prometheus the farm writes
-to — not from memory in this process — so these numbers are the ones in Grafana and this
-page cannot flatter the agent.</p>
+<p>The write-claim outcomes are read back out of the same Prometheus the farm writes to —
+not from memory in this process — so these are the numbers in Grafana and the page cannot
+flatter the agent:</p>
 <ul>
   <li><b>confirmed</b> — the agent claimed a write and verification found it in the stack</li>
   <li><b>honest failure</b> — the write failed and the agent said it failed</li>
   <li><b>unchecked</b> — no independent check was possible for that item</li>
-  <li><b>false success</b> — the agent <em>reported</em> a write that verification could
-      not find. The one number worth paging on.</li>
+  <li><b>false success</b> — the agent <em>reported</em> a write that verification could not
+      find. The one number worth paging on, so a non-zero value gets a banner above the
+      tiles as well as the tile treatment.</li>
 </ul>
 <p class="dnote">These are instant queries. If the agent has not run inside Prometheus's
-retention window the series are empty, and this section says "no run in the window" rather
-than showing zeroes — zero false successes and no data are not the same claim.</p>
+retention window the series are empty, and the tile says "no run in the window" rather than
+showing zeroes — zero false successes and no data are not the same claim.</p>
+
+<h4>Scenario state</h4>
+<p><b>Cycle phase</b> is derived from the deadline metric, not from a wall clock: the demo
+farm replays a ~4h incident loop. During <code>repaired</code>, <code>restarting</code> and
+<code>pre-fault</code> the farm is genuinely healthy, and this section says when the next
+fault is injected. It exists so a judge arriving mid-repair is not left concluding the
+product is broken.</p>
 
 <h4>Freshness and polling</h4>
-<p>The fleet and vitals calls run every 20 seconds and no faster; each one hits Prometheus
-through Grafana's datasource proxy. Agent metrics refresh every 60s. Polling pauses while
-the tab is hidden and resumes on return. The dot in the top bar is green after a clean
-sweep, amber when something is degraded or a deadline is a placeholder, and red when a call
-failed — with the reason on the page, never only in the console.</p>
+<p><code>/api/fleet</code> and <code>/api/vitals</code> refresh every 20 seconds and no
+faster; each hits Prometheus through Grafana's datasource proxy. The slate, facets and agent
+summaries refresh every 60s — the catalogue changes once a day and the agent's numbers only
+when a run happens. Polling pauses while the tab is hidden and resumes on return. A section
+is only rewritten when its rendered output actually changed, so a poll cannot reflow the
+page under the reader's cursor. The dot in the top bar is green after a clean sweep, amber
+when something is degraded or a deadline is a placeholder, and red when a call failed — with
+the reason on the page, never only in the console.</p>
 {% endblock %}
 
 {% block scripts %}
@@ -296,21 +502,33 @@ failed — with the reason on the page, never only in the console.</p>
 "use strict";
 /* ==========================================================================
    Overview client. Vanilla, no build, no framework — same constraint as the rest of
-   the prototype. Three fetches, four render functions, one 20s tick.
+   the prototype. Five fetches on two clocks, five render functions.
 
    Every value that reaches the DOM goes through esc() from the base layout: it arrives
-   from a live Prometheus over the network and is not ours to trust.
+   from a live Prometheus (or a generated catalogue) over the network and is not ours to
+   trust.
+
+   The structural rule of this file: a render function may not emit an unbounded list.
+   Where the data is unbounded it emits at most CAP rows plus a spill line built from the
+   API's own total.
    ========================================================================== */
 
 /* The Investigation page replays a recorded run of this shot. Naming it here keeps the
    primary action honest: for any other shot the button opens the investigation surface,
    it does not claim a per-shot run that the prototype does not have. */
 const RECORDED_SHOT = "SH042";
-const POLL_MS = 20000;        // fleet + vitals: these hit Prometheus, so no faster
-const AGENT_POLL_MS = 60000;  // agent telemetry changes only when a run happens
+const POLL_MS = 20000;       // fleet + vitals: these hit Prometheus, so no faster
+const SLOW_MS = 60000;       // slate, facets, agent telemetry: slow-moving by nature
+const ATTN_CAP = 5;          // exception rows on this page, worst first
+const UNK_CAP  = 3;          // unmeasurable rows: visible, but still bounded
+const CYCLE_TOTAL_MIN = 240; // the scenario loop, in minutes
+
+const FORECAST_URL = "/shots?tab=forecast";
+const SLATE_URL = "/shots?tab=slate";
 
 const S = {fleet:null, fleetErr:null, vitals:null, vitalsErr:null,
-           agent:null, agentErr:null, lastPoll:0};
+           slate:null, slateErr:null, facets:null, facetsErr:null,
+           agent:null, agentErr:null, lastFast:0, lastSlow:0};
 
 /* ------------------------------------------------------------- formatting */
 const num = (n) => Number(n).toLocaleString("en-US");
@@ -328,6 +546,11 @@ function fmtClock(iso){
   if (isNaN(d.getTime())) return String(iso);   // never swallow a shape we did not expect
   return d.toLocaleString([], {weekday:"short", hour:"2-digit", minute:"2-digit"});
 }
+function fmtMins(m){
+  if (m === null || m === undefined || isNaN(m)) return "—";
+  m = Math.round(m);
+  return m >= 60 ? Math.floor(m/60) + "h " + String(m%60).padStart(2,"0") + "m" : m + " min";
+}
 const STATUS_TEXT = {critical:"critical", at_risk:"at risk", on_track:"on track",
                      done:"done", unknown:"unknown"};
 const STATUS_GLYPH = {critical:"▲", at_risk:"▲", on_track:"●", done:"✓", unknown:"?"};
@@ -340,151 +563,262 @@ function note(kind, glyph, html){
   return '<div class="note ' + kind + '"><span class="gl" aria-hidden="true">' + glyph +
          '</span><div>' + html + '</div></div>';
 }
+/* Write only when the output actually changed. Polling every 20s must not replace DOM the
+   reader is pointing at, and an unchanged string is the cheapest possible proof that
+   nothing needs replacing. */
+function setHTML(el, html){
+  if (!el || el.__last === html) return;
+  el.__last = html; el.innerHTML = html;
+}
+function setText(el, text){
+  if (!el || el.__lastT === text) return;
+  el.__lastT = text; el.textContent = text;
+}
 
-/* ------------------------------------------------------------ fleet strip */
-function renderFleet(){
-  const box = $("fleetRows"), notes = $("fleetNotes");
+/* ------------------------------------------------------------------ buckets
+   One pass over the fleet payload, so every section below counts the same way. */
+function buckets(){
+  const f = S.fleet;
+  const shots = (f && Array.isArray(f.shots)) ? f.shots : [];
+  const b = {shots:shots, total:shots.length, exc:[], unk:[],
+             on_track:0, done:0};
+  shots.forEach((s) => {
+    if (s.status === "critical" || s.status === "at_risk") b.exc.push(s);
+    else if (s.status === "unknown") b.unk.push(s);
+    else if (s.status === "done") b.done++;
+    else b.on_track++;
+  });
+  return b;
+}
+
+/* -------------------------------------------------------------- attention
+   Exceptions only, capped at ATTN_CAP, worst first (the server already sorts). Then the
+   unmeasurable shots, capped at UNK_CAP, because a shot the farm cannot forecast is neither
+   an exception nor healthy and its `note` is the only thing that explains which. */
+function frow(s){
+  const st = STATUS_TEXT[s.status] ? s.status : "unknown";
+  const slipBad = typeof s.slip_hours === "number" && s.slip_hours > 0;
+  const cells = [
+    ["frames left", s.frames_remaining === null || s.frames_remaining === undefined
+      ? "—" : num(s.frames_remaining), ""],
+    ["rate", (typeof s.rate_per_min === "number" && s.rate_per_min > 0)
+      ? s.rate_per_min.toFixed(1) + " fr/min" : "—", ""],
+    ["eta", fmtClock(s.eta), ""],
+    ["slip", fmtHours(s.slip_hours), slipBad ? "slipbad" : ""],
+  ].map(([k,v,cls]) =>
+    '<span class="cell"><span class="k">' + k + '</span><span class="v ' + cls + '">' +
+    esc(v) + "</span></span>").join("");
+  return '<div class="frow" data-s="' + st + '">' +
+    '<span class="who"><span class="shot">' + esc(s.shot) + '</span>' +
+    '<span class="dept">' + esc(s.department || "—") + "</span></span>" +
+    pill(st) + cells +
+    (s.note ? '<span class="note-line">' + esc(s.note) + "</span>" : "") +
+    "</div>";
+}
+function spill(hidden, label, href){
+  if (hidden <= 0) return "";
+  return '<p class="spill"><a href="' + href + '">+' + num(hidden) + " more " +
+    esc(label) + " →</a></p>";
+}
+function renderAttention(){
+  const notes = $("attnNotes"), body = $("attnBody");
+
   if (S.fleetErr){
-    notes.innerHTML = note("bad","✗",
+    setHTML(notes, note("bad","✗",
       "<b>Fleet sweep failed.</b> " + esc(S.fleetErr) +
-      "<br>Nothing below this line is a current reading of the farm.");
-    box.innerHTML = '<span class="skel">no rows — the sweep did not complete</span>';
+      "<br>Nothing on this page that depends on the farm is a current reading."));
+    setHTML(body, '<div class="card"><p class="dim" style="margin:0">No forecast is being ' +
+      'shown, because none could be computed. This is not "nothing needs you" — it is ' +
+      '"we cannot tell you". The recorded run on <a href="/investigation">Investigation</a> ' +
+      'is unaffected.</p></div>');
     return;
   }
   const f = S.fleet;
-  if (!f){ return; }                                   // first paint keeps the skeleton
+  if (!f) return;                                    // first paint keeps the skeleton
 
+  const b = buckets();
   let head = "";
   /* Order matters: the placeholder-deadline warning goes FIRST, because it invalidates
-     every ETA and slip in the rows beneath it. */
+     every ETA and slip anywhere on this page. */
   if (f.deadline_is_placeholder){
     head += note("warn","⚠",
       "<b>The review deadline is a placeholder.</b> " +
       esc(f.deadline_placeholder_reason || "reason not reported") +
-      "<br>Every ETA, slip and status below is measured against a made-up deadline of " +
-      "<code>" + esc(f.deadline || "unknown") + "</code>. Treat them as arithmetic, not " +
+      "<br>Every ETA, slip and status on this page is measured against a made-up deadline " +
+      "of <code>" + esc(f.deadline || "unknown") + "</code>. Treat them as arithmetic, not " +
       "as schedule facts.");
   }
   if (f.error){
     /* The API reports shots AND an error when the sweep partially worked. Say both. */
-    head += note("bad","✗", "<b>The sweep reported a problem.</b> " + esc(f.error));
+    head += note("bad","✗", "<b>The sweep reported a problem.</b> " + esc(f.error) +
+      (b.total ? " The " + num(b.total) + " shot" + (b.total>1?"s":"") + " below may be a " +
+                 "partial picture." : ""));
   }
-  const shots = Array.isArray(f.shots) ? f.shots : [];
-  if (!shots.length && !f.error){
+  if (!b.total && !f.error){
     head += note("bad","✗",
       "<b>No shots in flight.</b> The sweep succeeded and returned nothing — for this farm " +
       "that means <code>shot_frames_remaining</code> has no series, i.e. the seeder is not " +
       "running. This is not a farm with no work in it.");
   }
-  if (shots.length && !f.error && !f.deadline_is_placeholder){
-    const ex = (f.exceptions || []).length;
-    /* The ISO string with its offset is exact but unreadable at a glance; it stays in the
-       title attribute so a TD can still get the precise value. */
-    const dl = '<span title="' + esc(f.deadline || "") + '">' +
-               esc(fmtClock(f.deadline)) + "</span>";
-    head += note(ex ? "warn" : "ok", ex ? "⚠" : "✓",
-      ex ? "<b>" + ex + " shot" + (ex>1?"s":"") + " forecast to miss the review deadline</b> " +
-           "of " + dl + ". Exceptions are listed first."
-         : "<b>All " + shots.length + " shots are clear of the review deadline</b> (" +
-           dl + ").");
-  }
-  notes.innerHTML = head;
+  setHTML(notes, head);
 
-  box.innerHTML = shots.map((s) => {
-    const st = STATUS_TEXT[s.status] ? s.status : "unknown";
-    const slipBad = typeof s.slip_hours === "number" && s.slip_hours > 0;
-    const cells = [
-      ["frames left", s.frames_remaining === null || s.frames_remaining === undefined
-        ? "—" : num(s.frames_remaining), ""],
-      ["rate", (typeof s.rate_per_min === "number" && s.rate_per_min > 0)
-        ? s.rate_per_min.toFixed(1) + " fr/min" : "—", ""],
-      ["eta", fmtClock(s.eta), ""],
-      ["slip", fmtHours(s.slip_hours), slipBad ? "slipbad" : ""],
-    ].map(([k,v,cls]) =>
-      '<span class="cell"><span class="k">' + k + '</span><span class="v ' + cls + '">' +
-      esc(v) + "</span></span>").join("");
-    return '<div class="frow" data-s="' + st + '">' +
-      '<span class="who"><span class="shot">' + esc(s.shot) + '</span>' +
-      '<span class="dept">' + esc(s.department || "—") + "</span></span>" +
-      pill(st) + cells +
-      (s.note ? '<span class="note-line">' + esc(s.note) + "</span>" : "") +
-      "</div>";
-  }).join("") || '<span class="skel">no rows to show</span>';
+  if (!b.total){
+    setHTML(body, "");
+    return;                                          // the banner above is the whole story
+  }
+
+  let html = "";
+  if (b.exc.length){
+    html += '<div class="fwrap">' +
+            b.exc.slice(0, ATTN_CAP).map(frow).join("") + "</div>" +
+            spill(b.exc.length - ATTN_CAP, "needing attention", FORECAST_URL);
+  } else {
+    html += allClear(b);
+  }
+
+  /* Unmeasurable shots. Never merged into the healthy count, never silently dropped. */
+  if (b.unk.length){
+    html += '<p class="subhead">Cannot be forecast · ' + num(b.unk.length) + " shot" +
+            (b.unk.length > 1 ? "s" : "") + "</p>" +
+            '<div class="fwrap">' + b.unk.slice(0, UNK_CAP).map(frow).join("") + "</div>" +
+            spill(b.unk.length - UNK_CAP, "unmeasurable", FORECAST_URL);
+  }
+  setHTML(body, html);
+}
+/* The all-clear. Three facts or it is not honest: how many shots are watched, that they are
+   all clear of the deadline, and when the next fault lands. */
+function allClear(b){
+  const f = S.fleet, v = S.vitals || {};
+  const c = cyclePhrase(v);
+  const dl = f.deadline
+    ? '<span title="' + esc(f.deadline) + '">' + esc(fmtClock(f.deadline)) + "</span>"
+    : "an unreported deadline";
+  const faulty = faultyNodes();
+  return '<div class="card clear">' +
+    '<h3>Nothing is forecast to miss the review deadline</h3>' +
+    "<p>All " + num(b.total) + " shot" + (b.total>1?"s":"") + " with live telemetry are " +
+      "forecast to land before the " + dl + " review" +
+      (f.deadline_is_placeholder ? " — which is a placeholder, see above" : "") + ". " +
+      esc(c.sentence) + "</p>" +
+    (faulty.length
+      ? "<p>" + esc(faulty.join(", ")) + " " + (faulty.length>1 ? "are" : "is") +
+        " reporting uncorrectable GPU ECC errors, but at the farm's current throughput no " +
+        "shot's forecast has crossed its deadline yet. Worth watching, not yet worth acting on.</p>"
+      : "") +
+    '<div class="cstats">' +
+      '<div><span class="n">' + num(b.total) + '</span><span class="l">watched</span></div>' +
+      '<div><span class="n">' + num(b.on_track) + '</span><span class="l">on track</span></div>' +
+      '<div><span class="n">' + num(b.done) + '</span><span class="l">done</span></div>' +
+      '<div><span class="n">' + num(b.unk.length) + '</span><span class="l">unmeasurable</span></div>' +
+      '<div><span class="n">' + esc(c.nextText) + '</span><span class="l">next fault</span></div>' +
+    "</div>" +
+    '<p class="spill" style="margin-top:.7rem"><a href="' + FORECAST_URL +
+      '">See all ' + num(b.total) + " forecasts →</a>" +
+      '<span class="cnt">/api/fleet · ' + num(b.total) + " shot" + (b.total>1?"s":"") +
+      ", 0 exceptions</span></p>" +
+    "</div>";
+}
+function faultyNodes(){
+  const v = S.vitals;
+  return (v && Array.isArray(v.faulty_nodes)) ? v.faulty_nodes.filter(Boolean) : [];
 }
 
 /* ----------------------------------------------------- the incident, framed
-   One source (the fleet payload) rendered three ways. The facts are identical; what
-   changes is which of them a given reader can act on. A producer cannot act on a PromQL
-   expression, so they do not get one — that is the whole thesis of the persona switch. */
+   One source (the fleet payload) rendered three ways, all three emitted and selected in
+   CSS off html[data-persona]. The facts are identical; what changes is which of them a
+   given reader can act on. A producer cannot act on a PromQL expression, so their frame
+   does not contain one — that is the whole thesis of the persona switch, and doing it
+   structurally means a later edit cannot leak a query into the wrong frame. */
 function worstException(){
-  const shots = (S.fleet && S.fleet.shots) || [];
-  return shots.find((s) => s.status === "critical" || s.status === "at_risk") || null;
+  const b = buckets();
+  return b.exc[0] || null;
+}
+function factList(pairs){
+  return pairs.map(([k,v]) =>
+    '<li><span class="k">' + esc(k) + '</span><span class="v">' + esc(v) + "</span></li>"
+  ).join("");
+}
+function frame(p, head, sub, facts){
+  return '<div class="pframe" data-p="' + p + '">' +
+    "<h3>" + esc(head) + "</h3>" +
+    '<p class="isub">' + esc(sub) + "</p>" +
+    '<ul class="ifacts">' + facts + "</ul></div>";
 }
 function renderIncident(){
-  const persona = document.documentElement.dataset.persona || "td";
-  $("incWho").textContent = {td:"a pipeline TD", supervisor:"a VFX supervisor",
-                             producer:"a producer"}[persona] || "you";
-  const head = $("incHead"), sub = $("incSub"), facts = $("incFacts"),
-        card = $("incCard"), p = $("incPill"), meta = $("incMeta"),
-        btn = $("incBtn"), hint = $("incHint");
+  const card = $("incCard"), p = $("incPill"), meta = $("incMeta"),
+        frames = $("incFrames"), btn = $("incBtn"), hint = $("incHint");
 
   if (S.fleetErr || !S.fleet){
     card.dataset.sev = "none";
-    p.dataset.s = "unknown"; p.textContent = "no reading";
-    meta.textContent = S.fleetErr ? "fleet sweep failed" : "waiting for the first sweep";
-    head.textContent = S.fleetErr ? "The farm could not be read"
-                                  : "Reading the farm…";
-    sub.textContent = S.fleetErr
+    p.dataset.s = "unknown"; setText(p, S.fleetErr ? "no reading" : "reading");
+    setText(meta, S.fleetErr ? "fleet sweep failed" : "waiting for the first sweep");
+    const h = S.fleetErr ? "The farm could not be read" : "Reading the farm…";
+    const s = S.fleetErr
       ? "Until the sweep succeeds there is no honest way to say whether anything needs you."
       : "";
-    facts.innerHTML = "";
-    btn.textContent = "Open the recorded investigation";
-    hint.textContent = S.fleetErr ? "The recorded run still works and is fully readable." : "";
+    setHTML(frames, ["td","supervisor","producer"].map((x) => frame(x, h, s, "")).join(""));
+    setText(btn, "Open the recorded investigation");
+    setText(hint, S.fleetErr ? "The recorded run still works and is fully readable." : "");
     return;
   }
 
   const s = worstException();
   const v = S.vitals || {};
-  const faulty = Array.isArray(v.faulty_nodes) ? v.faulty_nodes.filter(Boolean) : [];
+  const b = buckets();
+  const faulty = faultyNodes();
   const dl = S.fleet.deadline;
   const placeholder = !!S.fleet.deadline_is_placeholder;
 
   if (!s){
-    /* No exception. This is the state a mid-repair judge lands in, so it explains the
+    /* No exception. This is the state a mid-repair judge lands in, so the card explains the
        loop rather than just saying "all good" — a demo that looks idle reads as broken. */
-    const shots = S.fleet.shots || [];
-    const done = shots.filter((x) => x.status === "done").length;
-    const track = shots.filter((x) => x.status === "on_track").length;
-    const unk = shots.filter((x) => x.status === "unknown").length;
+    const c = cyclePhrase(v);
     card.dataset.sev = "clear";
-    p.dataset.s = "on_track"; p.textContent = "● no exception";
-    const cyc = cyclePhrase(v);
-    meta.textContent = cyc.meta;
-    head.textContent = "Nothing is forecast to miss the review deadline";
-    sub.textContent = cyc.sentence +
-      (unk ? " " + unk + " shot" + (unk>1?"s":"") + " report no recent completions and are" +
-             " listed as unknown, not as on track." : "");
-    facts.innerHTML = factList([
-      ["Shots in flight", shots.length + " (" + done + " done, " + track + " on track" +
-                          (unk ? ", " + unk + " unknown" : "") + ")"],
+    p.dataset.s = "on_track"; setText(p, "● no exception");
+    setText(meta, c.meta);
+    const facts = factList([
+      ["Shots in flight", b.total + " (" + b.done + " done, " + b.on_track + " on track" +
+                          (b.unk.length ? ", " + b.unk.length + " unmeasurable" : "") + ")"],
       ["Review deadline", (dl || "—") + (placeholder ? " (placeholder)" : "")],
       ["Throughput now", v.throughput_now == null ? "—"
         : v.throughput_now.toFixed(1) + " fr/min"],
       ["Nodes with faults", faulty.length ? faulty.join(", ") : "none in the last 30m"],
     ]);
-    btn.textContent = "Open the recorded investigation";
-    hint.textContent = "The recorded run of the SH042 slip is always available.";
+    const pFacts = factList([
+      ["Shots being watched", b.total + " — none late"],
+      ["Review is at", fmtClock(dl) + (placeholder ? " (placeholder, not a real date)" : "")],
+      ["Next disruption", c.nextText],
+      ["Anything to approve", "nothing right now"],
+    ]);
+    setHTML(frames,
+      frame("td", "No shot is forecast past its deadline",
+        c.sentence + " Throughput " +
+        (v.throughput_now == null ? "unread" : v.throughput_now.toFixed(1) + " fr/min") +
+        ", lighting queue " + (v.queue_lighting == null ? "unread" : v.queue_lighting) +
+        (faulty.length ? ", ECC on " + faulty.join(", ") : ", no ECC in 30m") + ".",
+        facts) +
+      frame("supervisor", "Every pass is clear of its review deadline",
+        c.sentence + " " + b.on_track + " of " + b.total + " passes are still rendering to " +
+        "a forecast inside the deadline" +
+        (b.unk.length ? ", and " + b.unk.length + " cannot be forecast at all — listed above " +
+                        "with the reason." : ".") ,
+        facts) +
+      frame("producer", "Nothing needs you right now",
+        "No shot is going to miss its review. " + c.plain +
+        " If that changes, this card is where it will say so, with a fix to approve or decline.",
+        pFacts));
+    setText(btn, "Open the recorded investigation");
+    setText(hint, "The recorded run of the " + RECORDED_SHOT + " slip is always available.");
     return;
   }
 
   card.dataset.sev = s.status === "critical" ? "critical" : "at_risk";
   p.dataset.s = s.status;
-  p.textContent = STATUS_GLYPH[s.status] + " " + STATUS_TEXT[s.status];
-  /* textContent, so no escaping: esc() here would print the entities literally. */
-  meta.textContent = s.shot + " · " + (s.department || "—") +
-    (placeholder ? " · deadline is a placeholder" : "");
-  btn.textContent = s.shot === RECORDED_SHOT ? "Investigate " + s.shot
-                                            : "Open investigation";
+  setText(p, STATUS_GLYPH[s.status] + " " + STATUS_TEXT[s.status]);
+  setText(meta, s.shot + " · " + (s.department || "—") +
+    (b.exc.length > 1 ? " · worst of " + b.exc.length + " exceptions" : "") +
+    (placeholder ? " · deadline is a placeholder" : ""));
+  setText(btn, s.shot === RECORDED_SHOT ? "Investigate " + s.shot : "Open investigation");
 
   const slip = fmtHours(s.slip_hours);
   const rate = (typeof s.rate_per_min === "number" && s.rate_per_min > 0)
@@ -492,157 +826,201 @@ function renderIncident(){
   const nodeLine = faulty.length
     ? faulty.join(", ") + " throwing uncorrectable GPU ECC errors"
     : "no node is currently reporting ECC errors";
+  const others = b.exc.length > 1
+    ? " " + (b.exc.length - 1) + " other shot" + (b.exc.length > 2 ? "s are" : " is") +
+      " also late; they are listed above."
+    : "";
 
-  if (persona === "producer"){
-    /* Plain language, schedule consequence, no metric names and no PromQL. */
-    head.textContent = s.shot + " misses the " + fmtClock(dl) + " review by about " + slip;
-    sub.textContent = "The pass is behind and, at the speed it is currently going, lands " +
-      slip + " late. " + (faulty.length
-        ? "The cause looks like one faulty render machine, which is fixable now."
-        : "The farm is not reporting a hardware fault, so the shortfall is capacity, not a broken node.") +
-      " Investigating gives you a fix to approve or decline.";
-    facts.innerHTML = factList([
-      ["Review is at", fmtClock(dl) + (placeholder ? " — placeholder, not a real deadline" : "")],
-      ["Forecast delivery", fmtClock(s.eta)],
-      ["Late by", slip],
-      ["Work left", (s.frames_remaining != null ? num(s.frames_remaining) + " frames" : "—")],
-    ]);
-    hint.textContent = "Nothing is written to the production stack without your approval.";
-  } else if (persona === "supervisor"){
-    head.textContent = s.shot + "'s " + (s.department || "") +
-      " pass is " + slip + " behind its review deadline";
-    sub.textContent = num(s.frames_remaining || 0) + " frames still to render at " + rate +
-      ", forecast " + fmtClock(s.eta) + " against a " + fmtClock(dl) + " review. " +
-      (faulty.length ? "One node is the cause — " + nodeLine + " — so this is not a problem with the shot or the lighting setup."
-                     : "No single node is faulted, so this is a capacity shortfall rather than one broken machine.");
-    facts.innerHTML = factList([
-      ["Shot / department", s.shot + " · " + (s.department || "—")],
-      ["Frames remaining", s.frames_remaining != null ? num(s.frames_remaining) : "—"],
-      ["Completion rate", rate],
-      ["ETA vs deadline", fmtClock(s.eta) + " vs " + fmtClock(dl)],
-      ["Slip", slip],
-      ["Suspect nodes", faulty.length ? faulty.join(", ") : "none"],
-    ]);
-    hint.textContent = "The investigation names the fix and its trade-off before anything runs.";
-  } else {
-    head.textContent = s.shot + " " + (s.department || "") + ": ETA " + fmtClock(s.eta) +
-      " vs deadline " + fmtClock(dl) + " — slip " + slip;
-    sub.textContent = num(s.frames_remaining || 0) + " frames remaining at " + rate +
-      ". Farm throughput " + (v.throughput_now == null ? "unread" : v.throughput_now.toFixed(1) + " fr/min") +
-      ", lighting queue " + (v.queue_lighting == null ? "unread" : v.queue_lighting) +
-      ". " + nodeLine + ".";
-    facts.innerHTML = factList([
-      ["Status", STATUS_TEXT[s.status] || s.status],
-      ["Frames / rate", (s.frames_remaining != null ? num(s.frames_remaining) : "—") + " @ " + rate],
-      ["ETA / deadline", (s.eta || "—") + " / " + (dl || "—")],
-      ["Slip (hours)", s.slip_hours == null ? "—" : String(s.slip_hours)],
-      ["ECC in 30m", "sum by (node) (increase(render_node_gpu_ecc_errors_total[30m])) > 0 → " +
-                     (faulty.length ? faulty.join(", ") : "∅")],
-      ["Rate query", "sum by (shot) (rate(render_frames_completed_total[15m])) * 60"],
-    ]);
-    hint.textContent = "Evidence panel carries the exact PromQL and LogQL, with Grafana " +
-      "deeplinks." + (s.shot === RECORDED_SHOT ? ""
-        : " The investigation surface currently replays the recorded " + RECORDED_SHOT + " run.");
-  }
-}
-function factList(pairs){
-  return pairs.map(([k,v]) =>
-    '<li><span class="k">' + esc(k) + '</span><span class="v">' + esc(v) + "</span></li>"
-  ).join("");
+  setHTML(frames,
+    /* --- Pipeline TD: identifiers, rates, the exact queries. */
+    frame("td",
+      s.shot + " " + (s.department || "") + ": ETA " + fmtClock(s.eta) +
+        " vs deadline " + fmtClock(dl) + " — slip " + slip,
+      num(s.frames_remaining || 0) + " frames remaining at " + rate +
+        ". Farm throughput " +
+        (v.throughput_now == null ? "unread" : v.throughput_now.toFixed(1) + " fr/min") +
+        ", lighting queue " + (v.queue_lighting == null ? "unread" : v.queue_lighting) +
+        ". " + nodeLine + "." + others,
+      factList([
+        ["Status", STATUS_TEXT[s.status] || s.status],
+        ["Frames / rate", (s.frames_remaining != null ? num(s.frames_remaining) : "—") +
+                          " @ " + rate],
+        ["ETA / deadline", (s.eta || "—") + " / " + (dl || "—")],
+        ["Slip (hours)", s.slip_hours == null ? "—" : String(s.slip_hours)],
+        ["ECC in 30m", "sum by (node) (increase(render_node_gpu_ecc_errors_total[30m])) > 0 → " +
+                       (faulty.length ? faulty.join(", ") : "∅")],
+        ["Rate query", "sum by (shot) (rate(render_frames_completed_total[15m])) * 60"],
+      ])) +
+    /* --- VFX supervisor: the shot, the cause, whether it is the shot's fault. */
+    frame("supervisor",
+      s.shot + "'s " + (s.department || "") + " pass is " + slip +
+        " behind its review deadline",
+      num(s.frames_remaining || 0) + " frames still to render at " + rate +
+        ", forecast " + fmtClock(s.eta) + " against a " + fmtClock(dl) + " review. " +
+        (faulty.length
+          ? "One node is the cause — " + nodeLine + " — so this is not a problem with the " +
+            "shot or the lighting setup."
+          : "No single node is faulted, so this is a capacity shortfall rather than one " +
+            "broken machine.") + others,
+      factList([
+        ["Shot / department", s.shot + " · " + (s.department || "—")],
+        ["Frames remaining", s.frames_remaining != null ? num(s.frames_remaining) : "—"],
+        ["Completion rate", rate],
+        ["ETA vs deadline", fmtClock(s.eta) + " vs " + fmtClock(dl)],
+        ["Slip", slip],
+        ["Suspect nodes", faulty.length ? faulty.join(", ") : "none"],
+      ])) +
+    /* --- Producer: schedule consequence, plain language, no metric names, no PromQL. */
+    frame("producer",
+      s.shot + " misses the " + fmtClock(dl) + " review by about " + slip,
+      "The pass is behind and, at the speed it is currently going, lands " + slip +
+        " late. " + (faulty.length
+          ? "The cause looks like one faulty render machine, which is fixable now."
+          : "No hardware fault is being reported, so the shortfall is capacity rather than " +
+            "a broken machine.") +
+        " Investigating gives you a fix to approve or decline." +
+        (b.exc.length > 1 ? " " + (b.exc.length - 1) + " other shot" +
+          (b.exc.length > 2 ? "s are" : " is") + " late too." : ""),
+      factList([
+        ["Review is at", fmtClock(dl) + (placeholder ? " — placeholder, not a real date" : "")],
+        ["Forecast delivery", fmtClock(s.eta)],
+        ["Late by", slip],
+        ["Work left", (s.frames_remaining != null ? num(s.frames_remaining) + " frames" : "—")],
+      ])));
+
+  /* The hint is one line and persona-shaped, but it carries no metric names in any frame,
+     so a single string is honest for all three. */
+  setText(hint, s.shot === RECORDED_SHOT
+    ? "Nothing is written to the production stack without approval."
+    : "The investigation surface currently replays the recorded " + RECORDED_SHOT + " run.");
 }
 
-/* --------------------------------------------------------------- farm vitals
-   The scenario loops on a ~4h clock, and `cycle_phase` is the API telling us where in the
-   loop we are. Translating it is not decoration: a judge who arrives at minute 200 sees a
-   healthy farm, and without this banner concludes the product does not work. */
-const CYCLE_TOTAL_MIN = 240;
-function cyclePhrase(v){
-  const phase = v && v.cycle_phase, min = v && v.cycle_minute;
-  if (!phase) return {kind:"ok", meta:"cycle phase unread",
-    sentence:"The farm currently reports no shot past its deadline."};
-  const healthy = ["repaired","restarting","pre-fault"].includes(phase);
-  let until = null;
-  if (typeof min === "number"){
-    /* pre-fault sits at a negative minute; repaired/restarting are past the incident and
-       wrap at the loop length. Both resolve to "minutes until the next fault". */
-    until = min < 0 ? Math.round(-min) : Math.round(CYCLE_TOTAL_MIN - min);
-    if (until < 0) until = null;
-  }
-  const when = until === null ? "shortly"
-    : until <= 1 ? "within a minute" : "in about " + until + " min";
-  if (healthy){
-    return {kind:"ok", healthy:true,
-      meta:"cycle phase: " + phase + (typeof min === "number" ? " · minute " + min : ""),
-      sentence:"The farm is healthy right now — this scenario replays a ~4h incident loop " +
-               "and it is currently in the “" + phase + "” phase. The next GPU " +
-               "fault is injected " + when + ", after which a shot starts slipping again."};
-  }
-  return {kind:"warn", healthy:false,
-    meta:"cycle phase: " + phase + (typeof min === "number" ? " · minute " + min : ""),
-    sentence:"The scenario is in its “" + phase + "” phase: the injected fault " +
-             "is live and the effect should be visible in the strip above."};
+/* ============================================== platform at a glance ======= */
+
+/* -------------------------------------------------------------- slate tile */
+function mrow(label, value, cls){
+  return '<li><span class="l">' + esc(label) + '</span><span class="fill"></span>' +
+    '<span class="v ' + (cls || "") + '">' + esc(value) + "</span></li>";
 }
-function renderVitals(){
-  const box = $("cycleNote");
-  if (S.vitalsErr){
-    box.innerHTML = note("bad","✗", "<b>Vitals unavailable.</b> " + esc(S.vitalsErr) +
-      " The four numbers below are not current.");
-    ["vThr","vQueue","vFaulty","vHot"].forEach((id) => {
-      $(id).textContent = "unread"; $(id).className = "v na"; });
+function renderSlate(){
+  const big = $("slTotal"), rows = $("slRows");
+  if (S.slateErr){
+    big.className = "n na"; setText(big, "unread");
+    setHTML(rows, '<li><span class="l">' + esc(S.slateErr) + "</span></li>");
     return;
   }
-  const v = S.vitals; if (!v) return;
-
-  const c = cyclePhrase(v);
-  box.innerHTML = note(c.kind, c.healthy ? "✓" : "⚠",
-    "<b>" + esc(c.meta) + ".</b> " + esc(c.sentence)) +
-    (v.error ? note("bad","✗", "<b>Vitals query reported:</b> " + esc(v.error)) : "");
-
-  setKpi("vThr", v.throughput_now == null ? null : v.throughput_now.toFixed(1),
-         "fr/min", v.throughput_now != null && v.throughput_now < 8 ? "bad" : "");
-  /* 18 is this farm's healthy lighting depth (see the seeder); 40+ means frames are
-     piling up faster than the pool clears them. */
-  setKpi("vQueue", v.queue_lighting == null ? null : num(v.queue_lighting), "",
-         v.queue_lighting != null && v.queue_lighting > 40 ? "bad" : "");
-  $("vQueueSub").textContent = v.queue_lighting == null
-    ? "render_queue_depth returned no series" : "frames waiting · ~18 is healthy here";
-
-  const faulty = Array.isArray(v.faulty_nodes) ? v.faulty_nodes.filter(Boolean) : [];
-  const fEl = $("vFaulty");
-  fEl.className = "v " + (faulty.length ? "bad" : "ok");
-  fEl.textContent = faulty.length ? String(faulty.length) : "0";
-  $("vFaultySub").textContent = faulty.length
-    ? faulty.join(", ") + " · uncorrectable GPU ECC, last 30m"
-    : "no ECC errors in the last 30m";
-
-  const hot = v.hottest_node;
-  setKpi("vHot", hot ? hot.celsius : null, "°C",
-         hot && hot.celsius >= 85 ? "bad" : "");
-  $("vHotSub").textContent = hot ? hot.node + " · topk(1) by temperature"
-                                 : "no temperature series returned";
+  const sum = S.slate && S.slate.summary;
+  if (!sum) return;
+  const st = sum.by_state || {};
+  big.className = "n"; setText(big, num(sum.total || 0));
+  setHTML(rows,
+    mrow("ingested today", sum.ingested_today == null ? "—" : num(sum.ingested_today)) +
+    mrow("rendering", st.rendering == null ? "—" : num(st.rendering)) +
+    mrow("complete", st.complete == null ? "—" : num(st.complete), "ok") +
+    mrow("ingesting for", (sum.days_ingesting == null ? "—" : sum.days_ingesting + " days") +
+         (sum.per_day ? " @ " + sum.per_day + "/day" : "")));
 }
-function setKpi(id, value, unit, cls){
-  const el = $(id);
-  if (value === null || value === undefined){
-    el.className = "v na"; el.textContent = "unread"; return;
+
+/* --------------------------------------------------------------- farm tile */
+function renderFarm(){
+  const big = $("fmWatched"), rows = $("fmRows");
+  if (S.fleetErr && S.vitalsErr){
+    big.className = "n na"; setText(big, "unread");
+    setHTML(rows, '<li><span class="l">both the fleet sweep and the vitals query failed' +
+      "</span></li>");
+    return;
   }
-  el.className = "v " + (cls || "");
-  el.innerHTML = esc(String(value)) + (unit ? '<span class="u"> ' + esc(unit) + "</span>" : "");
+  const b = buckets();
+  if (S.fleetErr){ big.className = "n na"; setText(big, "unread"); }
+  else { big.className = "n"; setText(big, num(b.total)); }
+
+  const v = S.vitals;
+  if (S.vitalsErr || !v){
+    setHTML(rows,
+      mrow("throughput", "unread", "na") +
+      mrow("faulty nodes", "unread", "na") +
+      mrow("lighting queue", "unread", "na") +
+      mrow("hottest GPU", S.vitalsErr ? "vitals call failed" : "reading…", "na"));
+    return;
+  }
+  const faulty = faultyNodes();
+  const hot = v.hottest_node;
+  setHTML(rows,
+    mrow("throughput (15m rate)",
+      v.throughput_now == null ? "no series" : num(Math.round(v.throughput_now)) + " fr/min",
+      v.throughput_now == null ? "na" : (v.throughput_now < 8 ? "bad" : "")) +
+    mrow("faulty nodes (ECC, 30m)",
+      faulty.length ? faulty.length + " · " + faulty.join(", ") : "0",
+      faulty.length ? "bad" : "ok") +
+    mrow("lighting queue depth",
+      v.queue_lighting == null ? "no series" : num(v.queue_lighting) + " (≈18 healthy)",
+      v.queue_lighting == null ? "na" : (v.queue_lighting > 40 ? "bad" : "")) +
+    mrow("hottest GPU",
+      hot ? hot.celsius + "°C · " + hot.node : "no series",
+      hot ? (hot.celsius >= 85 ? "bad" : "") : "na") +
+    (v.error ? mrow("query reported", String(v.error), "bad") : ""));
 }
 
-/* -------------------------------------------------------------- agent health */
+/* -------------------------------------------------------- departments tile
+   Six proportions. A stacked bar of divs plus a legend that carries the numbers, so the
+   bar is a shape and the legend is the fact. Bounded by construction: the legend shows the
+   top DEPT_CAP departments and folds any remainder into one "other" segment. */
+const DEPT_COLORS = ["#5ecbe8","#a78bfa","#f5a623","#3fb950","#7aa2c8","#d98cb3"];
+const DEPT_CAP = 6;
+function renderDept(){
+  const box = $("dptBody");
+  if (S.facetsErr){
+    setHTML(box, '<p class="dim" style="margin:0;font-size:.82rem">Facets unavailable: ' +
+      esc(S.facetsErr) + ". The distribution is not being guessed at.</p>");
+    return;
+  }
+  const fa = S.facets; if (!fa) return;
+  const d = fa.department;
+  const keys = d ? Object.keys(d) : [];
+  if (!keys.length){
+    setHTML(box, '<p class="dim" style="margin:0;font-size:.82rem">The catalogue returned ' +
+      "no departments. That is a broken catalogue, not an evenly balanced slate.</p>");
+    return;
+  }
+  /* The API already sorts by count descending; sort anyway so this does not depend on it. */
+  let items = keys.map((k) => [k, Number(d[k]) || 0]).sort((a, x) => x[1] - a[1]);
+  const total = items.reduce((n, kv) => n + kv[1], 0) || 1;
+  if (items.length > DEPT_CAP){
+    const rest = items.slice(DEPT_CAP - 1);
+    items = items.slice(0, DEPT_CAP - 1).concat(
+      [[rest.length + " others", rest.reduce((n, kv) => n + kv[1], 0)]]);
+  }
+  const bar = items.map(([k, n], i) => {
+    const pct = (n / total * 100);
+    return '<i style="width:' + pct.toFixed(2) + "%;background:" +
+      DEPT_COLORS[i % DEPT_COLORS.length] + '" title="' + esc(k + ": " + n) + '"></i>';
+  }).join("");
+  const legend = items.map(([k, n], i) =>
+    '<li><span class="sw" style="background:' + DEPT_COLORS[i % DEPT_COLORS.length] +
+    '"></span><span class="dn">' + esc(k) + '</span><span class="dv">' + num(n) + " · " +
+    (n / total * 100).toFixed(0) + "%</span></li>").join("");
+  setHTML(box, '<div class="dbar">' + bar + "</div>" +
+    '<ul class="dlegend">' + legend + "</ul>" +
+    '<p class="dim" style="margin:.6rem 0 0;font-size:.75rem">' + num(total) +
+    " shots across " + keys.length + " departments.</p>");
+}
+
+/* -------------------------------------------------------------- agent tile */
 const CLAIM_ORDER = [
-  ["confirmed",      "confirmed",      "verification found the write in the stack"],
-  ["honest_failure", "honest failure", "the write failed and the agent said so"],
-  ["unchecked",      "unchecked",      "no independent check was possible"],
-  ["false_success",  "false success",  "reported as written, not found afterwards"],
+  ["confirmed",      "confirmed"],
+  ["honest_failure", "honest failure"],
+  ["unchecked",      "unchecked"],
+  ["false_success",  "false success"],
 ];
 function renderAgent(){
-  const notes = $("aNotes"), claims = $("aClaims");
+  const big = $("agCalls"), bigU = $("agCallsU"), body = $("agBody"),
+        pnotes = $("platNotes");
   if (S.agentErr){
-    $("aCalls").textContent = "—"; $("aCallsBy").textContent = "";
-    notes.innerHTML = note("bad","✗", "<b>Agent telemetry unavailable.</b> " + esc(S.agentErr));
-    claims.innerHTML = ""; return;
+    big.className = "n na"; setText(big, "unread"); setText(bigU, "tool calls");
+    setHTML(body, '<p class="dim" style="margin:0;font-size:.82rem">Agent telemetry ' +
+      "unavailable: " + esc(S.agentErr) + "</p>");
+    setHTML(pnotes, "");
+    return;
   }
   const a = S.agent; if (!a) return;
 
@@ -650,13 +1028,6 @@ function renderAgent(){
   /* One sample per stage, and the counter is already cumulative for the run, so the total
      is the sum across stages rather than a rate. */
   const total = calls.reduce((n, r) => n + (Number(r.value) || 0), 0);
-  /* With no series the label has to carry the meaning: "— MCP tool calls recorded" reads
-     as a broken widget, "no tool calls in the window" reads as a fact. */
-  $("aCalls").textContent = calls.length ? num(Math.round(total)) : "none";
-  $("aCallsBy").textContent = calls.length
-    ? " across " + calls.length + " stage" + (calls.length > 1 ? "s" : "")
-    : " in the retention window";
-
   const wc = Array.isArray(a.write_claims) ? a.write_claims : [];
   const by = {};
   wc.forEach((r) => {
@@ -667,42 +1038,139 @@ function renderAgent(){
   if (!wc.length && !calls.length){
     /* Empty series is NOT "the agent behaved perfectly". Instant queries only see the
        retention window, so say what is actually true: no run in it. */
-    notes.innerHTML = note("warn","⚠",
-      "<b>No agent run inside Prometheus's window.</b> These are instant queries against " +
-      "<code>second_unit_*</code>; with no recent run there is nothing to read. Zero false " +
-      "successes and no data are different claims, so no zeroes are shown. " +
-      "The recorded run on <a href=\"/investigation\">Investigation</a> is unaffected.");
-    claims.innerHTML = ""; return;
+    big.className = "n na"; setText(big, "no run");
+    setText(bigU, "in the " + (a.window || "query") + " window");
+    setHTML(body, '<p class="dim" style="margin:0;font-size:.82rem">These are instant ' +
+      "queries against <code>second_unit_*</code>; with no recent run there is nothing to " +
+      "read. Zero false successes and no data are different claims, so no zeroes are " +
+      'shown. The recorded run on <a href="/investigation">Investigation</a> is unaffected.' +
+      "</p>");
+    setHTML(pnotes, "");
+    return;
   }
 
-  const bad = Number(by.false_success || 0);
-  notes.innerHTML = bad > 0
-    ? note("bad","‼",
-        "<b>" + num(bad) + " write claim" + (bad>1?"s":"") + " did not survive verification.</b> " +
-        "The agent reported the write as done and an independent read of the stack could " +
-        "not find it. This is the number to page on, and it is shown here rather than " +
-        "buried on the agent page.")
-    : note("ok","✓",
-        "<b>No false successes recorded.</b> Every write the agent claimed in this window " +
-        "was either found in the stack or reported as failed.");
+  big.className = "n"; setText(big, calls.length ? num(Math.round(total)) : "0");
+  setText(bigU, "tool calls" + (calls.length
+    ? " across " + calls.length + " stage" + (calls.length > 1 ? "s" : "")
+    : " recorded") + " · " + (a.window || "window"));
 
-  claims.innerHTML = CLAIM_ORDER.map(([key, label, desc]) => {
+  const bad = Number(by.false_success || 0);
+  const cells = CLAIM_ORDER.map(([key, label]) => {
     const n = by[key];
     const has = n !== undefined;
     const cls = key === "false_success"
       ? (Number(n || 0) > 0 ? "claim alarm" : "claim zero")
       : "claim";
     return '<div class="' + cls + '"><span class="cn">' + (has ? num(Math.round(n)) : "—") +
-      '</span><span class="cl">' + esc(label) + '</span><span class="cd">' +
-      esc(has ? desc : "not reported in this window") + "</span></div>";
+      '</span><span class="cl">' + esc(label) + "</span></div>";
   }).join("");
 
   const other = Object.keys(by).filter((k) => !CLAIM_ORDER.some(([c]) => c === k));
-  if (other.length){
-    /* An outcome label we do not know about is a schema change, not something to drop. */
-    notes.innerHTML += note("warn","⚠", "<b>Unrecognised outcome label(s):</b> " +
-      esc(other.join(", ")) + ". Shown here rather than discarded.");
+  setHTML(body, '<div class="claims">' + cells + "</div>" +
+    '<p class="dim" style="margin:.55rem 0 0;font-size:.75rem">' +
+      (bad > 0
+        ? "<b style=\"color:var(--crit)\">" + num(bad) + " write claim" + (bad>1?"s":"") +
+          " did not survive verification.</b>"
+        : "No false successes: every claimed write was found in the stack or reported as " +
+          "failed.") +
+      (other.length ? " Unrecognised outcome label(s): " + esc(other.join(", ")) +
+                      " — shown rather than discarded." : "") +
+    "</p>");
+
+  /* false_success is the number this project earned the right to show. Non-zero gets a
+     banner above the tiles as well as the tile treatment: it is not something a reader
+     should have to find. */
+  setHTML(pnotes, bad > 0
+    ? note("bad","‼",
+        "<b>" + num(bad) + " write claim" + (bad>1?"s":"") + " did not survive verification.</b> " +
+        "The agent reported the write as done and an independent read of the stack could not " +
+        "find it. This is the number to page on. " +
+        '<a href="/agent">Open the agent page →</a>')
+    : "");
+}
+
+/* ------------------------------------------------------------ scenario state
+   The scenario loops on a ~4h clock and `cycle_phase` is the API telling us where in the
+   loop we are. Translating it is not decoration: a judge who arrives at minute 200 sees a
+   healthy farm and, without this, concludes the product does not work. */
+const HEALTHY_PHASES = ["repaired","restarting","pre-fault"];
+function cyclePhrase(v){
+  const phase = v && v.cycle_phase, min = v && v.cycle_minute;
+  if (!phase){
+    return {kind:"ok", healthy:null, phase:null, minute:null, until:null,
+      nextText:"unread",
+      meta:"cycle phase unread",
+      sentence:"The farm currently reports no shot past its deadline; the scenario's loop " +
+               "position could not be read, so there is no forecast of the next fault.",
+      plain:"The demo's own timeline could not be read, so there is no estimate of when the " +
+            "next disruption arrives."};
   }
+  const healthy = HEALTHY_PHASES.includes(phase);
+  let until = null;
+  if (typeof min === "number"){
+    /* pre-fault sits at a negative minute; every other phase is measured forward from the
+       fault and wraps at the loop length. Both resolve to "minutes until the next fault". */
+    until = min < 0 ? Math.round(-min) : Math.round(CYCLE_TOTAL_MIN - min);
+    if (until < 0) until = null;
+  }
+  const when = until === null ? "shortly"
+    : until <= 1 ? "within a minute" : "in about " + fmtMins(until);
+  const meta = "cycle phase: " + phase +
+    (typeof min === "number" ? " · minute " + min : "");
+  if (healthy){
+    return {kind:"ok", healthy:true, phase:phase, minute:min, until:until,
+      nextText: until === null ? "shortly" : fmtMins(until), meta:meta,
+      sentence:"This scenario replays a ~4h incident loop and is currently in its “" +
+               phase + "” phase, where the farm is genuinely healthy. The next GPU fault " +
+               "is injected " + when + ", after which a shot starts slipping again.",
+      plain:"The demo runs on a ~4h loop and the farm is in its quiet stretch. The next " +
+            "disruption is scheduled " + when + "."};
+  }
+  return {kind:"warn", healthy:false, phase:phase, minute:min, until:until,
+    nextText: until === null ? "shortly" : fmtMins(until), meta:meta,
+    sentence:"The scenario is in its “" + phase + "” phase: the injected GPU fault is live. " +
+             "Whether a shot slips depends on how much headroom the farm has, so a live " +
+             "fault and a clear forecast are not a contradiction.",
+    plain:"The demo has deliberately broken a machine (it is on a ~4h loop). Whether that " +
+          "costs you a delivery depends on how much spare capacity the farm has right now."};
+}
+function renderScenario(){
+  const v = S.vitals;
+  const phaseEl = $("scPhase"), minEl = $("scMin"), nextEl = $("scNext"),
+        footEl = $("scFoot"), trackEl = $("scTrack");
+  if (S.vitalsErr || !v){
+    ["scPhase","scMin","scNext"].forEach((id) => {
+      const el = $(id); el.className = "v"; setText(el, "unread"); });
+    trackEl.hidden = true;
+    setText(footEl, S.vitalsErr
+      ? "The vitals call failed (" + S.vitalsErr + "), so the scenario's position is unknown."
+      : "Reading the scenario's position…");
+    return;
+  }
+  const c = cyclePhrase(v);
+  phaseEl.className = "v " + (c.healthy === true ? "okv" : c.healthy === false ? "warnv" : "");
+  setText(phaseEl, c.phase || "unread");
+  setText($("scPhaseD"), c.healthy === true
+    ? "the farm is genuinely healthy in this phase"
+    : c.healthy === false ? "a fault is live in this phase"
+    : "from /api/vitals cycle_phase");
+  minEl.className = "v";
+  setText(minEl, typeof c.minute === "number" ? String(c.minute) : "unread");
+  nextEl.className = "v";
+  setText(nextEl, c.nextText);
+  setText($("scNextD"), c.until === null
+    ? "loop position unread, so no countdown"
+    : "loop length ~" + CYCLE_TOTAL_MIN + " min");
+
+  if (typeof c.minute === "number"){
+    const pos = Math.max(0, Math.min(100, (c.minute / CYCLE_TOTAL_MIN) * 100));
+    trackEl.hidden = false;
+    $("scFill").style.width = pos.toFixed(2) + "%";
+    $("scMark").style.left = pos.toFixed(2) + "%";
+  } else {
+    trackEl.hidden = true;
+  }
+  setText(footEl, c.sentence);
 }
 
 /* ------------------------------------------------------------------ loading */
@@ -716,22 +1184,34 @@ async function getJSON(url){
   }
   return body;
 }
+function settle(res){ return res.status === "fulfilled"
+  ? [res.value, null] : [null, (res.reason && res.reason.message) || String(res.reason)]; }
+
 async function pollFarm(){
-  S.lastPoll = Date.now();
+  if (document.hidden) return;                       // a hidden tab queries nothing
+  S.lastFast = Date.now();
   const [fleet, vitals] = await Promise.allSettled([
     getJSON("/api/fleet"), getJSON("/api/vitals"),
   ]);
-  if (fleet.status === "fulfilled"){ S.fleet = fleet.value; S.fleetErr = null; }
-  else { S.fleetErr = fleet.reason.message || String(fleet.reason); }
-  if (vitals.status === "fulfilled"){ S.vitals = vitals.value; S.vitalsErr = null; }
-  else { S.vitalsErr = vitals.reason.message || String(vitals.reason); }
+  const [fv, fe] = settle(fleet); if (fv){ S.fleet = fv; } S.fleetErr = fe;
+  const [vv, ve] = settle(vitals); if (vv){ S.vitals = vv; } S.vitalsErr = ve;
 
-  renderFleet(); renderIncident(); renderVitals(); setFreshness();
+  renderAttention(); renderIncident(); renderFarm(); renderScenario(); setFreshness();
 }
-async function pollAgent(){
-  try { S.agent = await getJSON("/api/agent/metrics"); S.agentErr = null; }
-  catch (e){ S.agentErr = e.message || String(e); }
-  renderAgent();
+async function pollSlow(){
+  if (document.hidden) return;
+  S.lastSlow = Date.now();
+  /* per_page=1 because this page wants the `summary` block, not a page of rows. The
+     endpoint honours it, so the payload stays small. */
+  const [slate, facets, agent] = await Promise.allSettled([
+    getJSON("/api/shots?per_page=1"), getJSON("/api/shots/facets"),
+    getJSON("/api/agent/metrics"),
+  ]);
+  const [sv, se] = settle(slate); if (sv){ S.slate = sv; } S.slateErr = se;
+  const [cv, ce] = settle(facets); if (cv){ S.facets = cv; } S.facetsErr = ce;
+  const [av, ae] = settle(agent); if (av){ S.agent = av; } S.agentErr = ae;
+
+  renderSlate(); renderDept(); renderAgent();
 }
 /* The top-bar dot is the one place that summarises "can I believe this page right now". */
 function setFreshness(){
@@ -744,21 +1224,24 @@ function setFreshness(){
   if (f.error){ fresh("bad", "sweep error"); return; }
   if (f.deadline_is_placeholder){ fresh("warn", "placeholder deadline"); return; }
   if (!((f.shots || []).length)){ fresh("warn", "no shots in flight"); return; }
-  fresh((f.exceptions || []).length ? "warn" : "live",
-        ((f.exceptions || []).length ? "exception · " : "swept ") + t);
+  const b = buckets();
+  if (b.exc.length){ fresh("warn", b.exc.length + " exception · " + t); return; }
+  if (b.unk.length){ fresh("warn", b.unk.length + " unmeasurable · " + t); return; }
+  fresh("live", "swept " + t);
 }
 
-/* The persona lives in the top bar and the base layout fires this when it changes; only
-   the incident card is persona-dependent, so nothing else re-renders. */
-document.addEventListener("persona", renderIncident);
+/* No persona listener: all three framings are already in the DOM and CSS picks one off
+   html[data-persona], which the base layout sets. Nothing to re-render. */
 
-pollFarm(); pollAgent();
+pollFarm(); pollSlow();
 setInterval(pollFarm, POLL_MS);
-setInterval(pollAgent, AGENT_POLL_MS);
+setInterval(pollSlow, SLOW_MS);
 /* A hidden tab should not keep querying Prometheus; coming back should not have to wait
-   out the rest of a 20s tick. The guard keeps the effective floor at POLL_MS. */
+   out the rest of a tick. The guards keep the effective floors at POLL_MS / SLOW_MS. */
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden && Date.now() - S.lastPoll >= POLL_MS) pollFarm();
+  if (document.hidden) return;
+  if (Date.now() - S.lastFast >= POLL_MS) pollFarm();
+  if (Date.now() - S.lastSlow >= SLOW_MS) pollSlow();
 });
 </script>
 {% endblock %}

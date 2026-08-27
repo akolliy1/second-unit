@@ -160,6 +160,7 @@ html[data-no-verdict="1"] .briefing{display:none}
    "requires human approval" — all counts from the wrong shot's run, sitting under a heading
    that said no run existed. Exactly the contradiction this state was added to prevent. */
 html[data-subject-mismatch="1"] #verdictZone,
+html[data-subject-mismatch="1"] #runDetail,
 html[data-subject-mismatch="1"] .runblock,
 html[data-subject-mismatch="1"] #briefing,
 html[data-subject-mismatch="1"] .runfoot{display:none}
@@ -399,24 +400,6 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
     <button class="btn primary" id="btnRunSubject">Run investigation now</button>
   </section>
 
-  <!-- ================================================================ ASK -->
-  <section class="sect ask" id="ask" data-state="idle">
-    <h2>Ask about this farm</h2>
-    <div class="ask-chips" id="askChips"></div>
-    <form class="ask-form" id="askForm">
-      <input id="askInput" type="text" autocomplete="off"
-             placeholder="e.g. does SH041 make its review?"
-             aria-label="Ask a question about this farm">
-      <button class="btn" type="submit" id="askBtn">Ask</button>
-    </form>
-    <div class="ask-out" id="askOut">
-      <div id="askSteps"></div>
-      <ul class="ask-calls" id="askCalls"></ul>
-      <p class="ask-status" id="askStatus"></p>
-      <div id="askBody"></div>
-    </div>
-  </section>
-
   <!-- ============================================================ 1. VERDICT -->
   <section class="zone" id="verdictZone" data-state="ready" aria-live="polite">
     <div class="st st-ready">
@@ -483,8 +466,22 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
       <p class="berr" id="briefErr"></p>
     </div>
 
-  <!-- ============================================================ 2. STAGES -->
-  <section class="panel runblock">
+  <!-- ==================================================== RUN DETAIL (tabs) -->
+  <!-- Pipeline, Evidence and Write-back are three views of ONE run, so they tab.
+       The verdict, the briefing and the ask box stay outside: a narrative — what happened,
+       why, what it costs, what to do — reads top to bottom, and tabbing an argument breaks
+       it. Tabbing three views of the same evidence just stops the page being a
+       four-thousand-pixel scroll. -->
+  <div id="runDetail">
+    <div class="tabs" role="tablist" aria-label="Run detail">
+      <button role="tab" id="tab-pipeline" data-tab="pipeline" aria-selected="true">Pipeline</button>
+      <button role="tab" id="tab-evidence" data-tab="evidence" aria-selected="false">Evidence</button>
+      <button role="tab" id="tab-writeback" data-tab="writeback" aria-selected="false">Write-back</button>
+    </div>
+    <p class="tabnote" id="runTabNote">The five stages as they ran, with every tool call.</p>
+    <section class="tabpanel" role="tabpanel" data-tab="pipeline"
+             aria-labelledby="tab-pipeline">
+<section class="panel runblock">
     <div class="panel-head">
       <h2>Pipeline</h2>
       <span class="note" id="stagesNote">3 stages · deterministic order</span>
@@ -515,9 +512,12 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
       </div>
     </div>
   </section>
+    </section>
 
-  <!-- ============================================================ 3. EVIDENCE -->
-  <section class="panel runblock">
+
+    <section class="tabpanel" role="tabpanel" data-tab="evidence"
+             aria-labelledby="tab-evidence">
+<section class="panel runblock">
     <div class="panel-head">
       <h2>Evidence</h2>
       <span class="note" id="evNote">every claim carries the query that produced it</span>
@@ -541,9 +541,12 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
       </div></div>
     </div>
   </section>
+    </section>
 
-  <!-- ============================================================ 4. WRITE-BACK -->
-  <section class="runblock "panel wb">
+
+    <section class="tabpanel" role="tabpanel" data-tab="writeback"
+             aria-labelledby="tab-writeback">
+<section class="panel wb runblock">
     <div class="panel-head">
       <h2>Proposed write-back</h2>
       <span class="note">requires human approval · nothing runs until it is given</span>
@@ -574,6 +577,28 @@ footer{margin-top:2rem;padding-top:1rem;border-top:1px solid var(--line);
       </div></div>
     </div>
   </section>
+    </section>
+  </div>
+
+  <!-- ================================================================ ASK -->
+  <section class="sect ask" id="ask" data-state="idle">
+    <h2>Ask about this farm</h2>
+    <div class="ask-chips" id="askChips"></div>
+    <form class="ask-form" id="askForm">
+      <input id="askInput" type="text" autocomplete="off"
+             placeholder="e.g. does SH041 make its review?"
+             aria-label="Ask a question about this farm">
+      <button class="btn" type="submit" id="askBtn">Ask</button>
+    </form>
+    <div class="ask-out" id="askOut">
+      <div id="askSteps"></div>
+      <ul class="ask-calls" id="askCalls"></ul>
+      <p class="ask-status" id="askStatus"></p>
+      <div id="askBody"></div>
+    </div>
+  </section>
+
+
 
   <!-- ============================================================ 5. ACTIONS -->
   <div class="actions">
@@ -945,6 +970,7 @@ function handle(ev) {
       $("stagesErr").hidden = true;
       (ev.stages || []).forEach((s) => stageRow(s.id, s.label, s.role));
       $("stagesNote").textContent = (ev.stages || []).length + " stages · deterministic order";
+      if (RUNTABS) RUNTABS.count("pipeline", (ev.stages || []).length);
       zone("stagesZone", "ready");
       zone("verdictZone", STATE.live ? "loading" : "ready");
       zone("evZone", STATE.live ? "loading" : "empty");
@@ -985,6 +1011,7 @@ function handle(ev) {
       setBriefing(ev);
       break;
     case "writeback_proposed":
+      if (RUNTABS) RUNTABS.count("writeback", (ev.items || []).length, "warn");
       renderWriteback(ev.items || []);
       break;
 
@@ -1416,6 +1443,23 @@ $("askForm").addEventListener("submit", (e) => {
     $("askChips").innerHTML = '<span class="ask-status">suggestions unavailable</span>';
   }
 })();
+
+/* --------------------------------------------------------------- run tabs */
+const RUNTABS = initTabs("runDetail", {
+  param: "view",
+  onChange(id) {
+    /* Say what the reader is now looking at. A tab that only swaps panels leaves them to
+       infer what changed. */
+    const note = {
+      pipeline: "The five stages as they ran, with every tool call.",
+      evidence: "Every claim with the exact PromQL or LogQL that produced it, and a deeplink "
+                + "into the live Grafana stack.",
+      writeback: "What the agent proposes to change in Grafana. Nothing runs until you "
+                 + "approve it.",
+    }[id];
+    if (note) $("runTabNote").textContent = note;
+  },
+});
 
 /* ------------------------------------------------------------------ boot */
 function hydrateRecorded() {

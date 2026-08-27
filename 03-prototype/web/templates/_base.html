@@ -152,6 +152,52 @@ main{grid-area:main; padding:clamp(.9rem,2.5vw,1.6rem); min-width:0}
 }
 
 
+/* =============================================================== tabs
+   One tab primitive, shared by every page.
+   Three pages had grown into single long scrolls holding unrelated things — a delivery
+   forecast stacked on a 750-row catalogue, four analytics panels stacked under a trust
+   verdict. Scroll is the wrong control for "these are different questions": it makes the
+   reader do the sorting, hides the second thing entirely on a phone, and gives no way to
+   link someone to the part you mean.
+
+   Rules this primitive enforces so the pages cannot drift:
+     - real ARIA tablist semantics, arrow-key navigation, one tab stop
+     - the active tab lives in the URL (?tab=), so a view is linkable and survives reload
+     - panels are hidden with [hidden], not opacity, so hidden content is not read by
+       screen readers or found by ctrl-F
+     - a per-tab summary line is part of the pattern: switching tabs should tell you what
+       you are now looking at, not just change the rows
+*/
+.tabs{
+  display:flex; gap:.15rem; border-bottom:1px solid var(--line); margin:0 0 1rem;
+  overflow-x:auto; scrollbar-width:none;
+}
+.tabs::-webkit-scrollbar{display:none}
+.tabs button{
+  position:relative; font:inherit; font-size:.88rem; font-weight:600; cursor:pointer;
+  background:none; border:none; color:var(--ink3); padding:.6rem .85rem .7rem;
+  white-space:nowrap; display:inline-flex; align-items:center; gap:.45rem;
+}
+.tabs button:hover{color:var(--ink2)}
+.tabs button[aria-selected="true"]{color:var(--ink)}
+.tabs button[aria-selected="true"]::after{
+  content:""; position:absolute; left:.5rem; right:.5rem; bottom:-1px; height:2px;
+  background:var(--amber); border-radius:2px 2px 0 0;
+}
+.tabs button:focus-visible{outline:2px solid var(--cyan); outline-offset:-2px; border-radius:6px}
+.tabs .cnt{
+  font-family:var(--mono); font-size:.7rem; font-weight:600; color:var(--ink3);
+  background:var(--panel); border:1px solid var(--line); border-radius:999px;
+  padding:0 .38rem; line-height:1.5;
+}
+.tabs button[aria-selected="true"] .cnt{color:var(--ink2); border-color:var(--line2)}
+.tabs .cnt[data-tone="bad"]{color:var(--crit); border-color:var(--crit-dim)}
+.tabs .cnt[data-tone="warn"]{color:var(--amber); border-color:var(--amber-dim)}
+.tabpanel[hidden]{display:none}
+/* The line under the tabs that says what this view is. Part of the pattern, not decoration:
+   a tab that only swaps rows leaves the reader to infer what changed. */
+.tabnote{color:var(--ink3); font-size:.82rem; margin:-.35rem 0 1rem; max-width:78ch}
+
 /* ------------------------------------------------------------- docs drawer */
 .docs{
   grid-area:docs; display:none; border-left:1px solid var(--line);
@@ -271,6 +317,77 @@ document.addEventListener("keydown", (e) => {
     setDocs(document.documentElement.dataset.docs !== "1");
   }
 });
+/* ---------------------------------------------------------------------- tabs
+   initTabs(rootId) wires one tablist. Pages call it once and supply the markup:
+     <div class="tabs" role="tablist"> <button role="tab" data-tab="ID" …> </div>
+     <section class="tabpanel" role="tabpanel" data-tab="ID"> … </section>
+   The chosen tab is mirrored into ?tab= so a view can be linked and survives reload. */
+function initTabs(rootId, opts) {
+  const root = rootId ? $(rootId) : document;
+  if (!root) return null;
+  const list = root.querySelector('[role="tablist"]');
+  if (!list) return null;
+  const tabs = Array.from(list.querySelectorAll('[role="tab"]'));
+  const panels = Array.from(root.querySelectorAll(".tabpanel"));
+  const param = (opts && opts.param) || "tab";
+  const onChange = (opts && opts.onChange) || null;
+
+  function select(id, push) {
+    const known = tabs.some((t) => t.dataset.tab === id);
+    if (!known) id = tabs[0] && tabs[0].dataset.tab;
+    tabs.forEach((t) => {
+      const on = t.dataset.tab === id;
+      t.setAttribute("aria-selected", String(on));
+      /* One tab stop for the whole list: arrows move between tabs, Tab leaves the list.
+         Leaving every tab focusable makes a keyboard user press Tab five times to get past. */
+      t.tabIndex = on ? 0 : -1;
+    });
+    panels.forEach((p) => { p.hidden = p.dataset.tab !== id; });
+    if (push) {
+      const u = new URL(location.href);
+      u.searchParams.set(param, id);
+      history.replaceState(null, "", u);
+    }
+    if (onChange) onChange(id);
+    return id;
+  }
+
+  tabs.forEach((t) => t.addEventListener("click", () => select(t.dataset.tab, true)));
+  list.addEventListener("keydown", (e) => {
+    const i = tabs.findIndex((t) => t.getAttribute("aria-selected") === "true");
+    if (i < 0) return;
+    let j = null;
+    if (e.key === "ArrowRight") j = (i + 1) % tabs.length;
+    if (e.key === "ArrowLeft") j = (i - 1 + tabs.length) % tabs.length;
+    if (e.key === "Home") j = 0;
+    if (e.key === "End") j = tabs.length - 1;
+    if (j === null) return;
+    e.preventDefault();
+    select(tabs[j].dataset.tab, true);
+    tabs[j].focus();
+  });
+
+  const initial = new URLSearchParams(location.search).get(param);
+  const active = select(initial || (tabs[0] && tabs[0].dataset.tab), false);
+  return {
+    select,
+    active: () => active,
+    /* Pages call this to keep the pill counts honest as data arrives. */
+    count(id, value, tone) {
+      const t = tabs.find((x) => x.dataset.tab === id);
+      if (!t) return;
+      let pill = t.querySelector(".cnt");
+      if (!pill) {
+        pill = document.createElement("span");
+        pill.className = "cnt";
+        t.appendChild(pill);
+      }
+      pill.textContent = value;
+      if (tone) pill.dataset.tone = tone; else delete pill.dataset.tone;
+    },
+  };
+}
+
 function esc(s){ return String(s ?? "").replace(/[&<>"']/g,
   (c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 function fresh(state, text){ const d=$("freshDot"), t=$("freshText");

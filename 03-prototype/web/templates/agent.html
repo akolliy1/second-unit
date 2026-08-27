@@ -7,15 +7,26 @@
   GET /api/agent/metrics, from the same series a Grafana dashboard would read. Nothing here
   is held in the web process's memory, so the page and the stack cannot disagree.
 
-  The headline is write-claim verification, because that is the one number that says whether
-  the agent's self-report matched reality. `false_success` counts writes the agent REPORTED
-  as successful that an independent out-of-band check (verify.py, Grafana's HTTP API — not
-  the MCP tools the agent used) could not find in the stack.
+  Structure — deliberate, and the reason this page is not one long scroll:
 
-  Absence is handled as absence, never as zero: /api/agent/metrics runs INSTANT queries, so
-  a run older than Prometheus's ~5 minute lookback reports nothing at all. An empty
-  verification panel means "unobserved", and saying "0 false successes" there would be the
-  exact laundering this page exists to prevent.
+    PINNED (above the tabs, on every view)
+      1. the plain-language verdict, for whoever did not come here to read latency bars
+      2. write-claim verification — the four outcomes of the agent's self-report, checked
+         out of band. This is the page's whole argument. It does not go behind a tab, and
+         when false_success > 0 it is forced visible for every persona.
+
+    TABBED (the analytics — four different questions, not four sections of one)
+      cost · latency · failures · grafana
+
+  Cost, latency and failures are accounting. They are worth reading, and they are not the
+  argument; stacking them under the argument made a reader scroll past the only number that
+  says whether the agent lied.
+
+  Absence is handled as absence, never as zero: /api/agent/metrics asks for the last value
+  each series reported inside a window (last_over_time, `window` in the response), so a stack
+  with no run inside that window returns nothing at all. An empty verification panel means
+  "unobserved", and saying "0 false successes" there would be the exact laundering this page
+  exists to prevent.
 #}
 
 {% block head_extra %}
@@ -28,6 +39,9 @@
 html[data-persona="producer"] .plain,
 html[data-persona="supervisor"] .plain{display:block}
 html[data-persona="producer"] .machinery{display:none}
+/* One exception, and it is the point of the page: a false success is never hidden from
+   anybody. Id specificity beats the persona rule above without needing !important. */
+html[data-agentalarm="1"] #claimSection{display:block}
 .plain .card{border-left:3px solid var(--amber)}
 .plain h3{margin:0 0 .4rem; font-size:1.05rem; letter-spacing:-.01em}
 .plain p{color:var(--ink2); margin:0 0 .5rem; max-width:62ch}
@@ -83,6 +97,9 @@ html[data-persona="producer"] .machinery{display:none}
 .oc .name{display:block; font-family:var(--mono); font-size:.64rem; letter-spacing:.1em;
   text-transform:uppercase; color:var(--ink2); margin:.3rem 0 .2rem}
 .oc .def{display:block; font-size:.76rem; color:var(--ink3); line-height:1.45}
+/* The pinned headline is separated from the tabs by a rule rather than by whitespace: the
+   reader should see that everything below the line is a different kind of claim. */
+.pinfoot{border-top:1px solid var(--line); margin:1.35rem 0 1.1rem}
 
 /* -------------------------------------------------------------- stage table */
 .rows{display:grid; gap:.35rem}
@@ -149,6 +166,10 @@ html[data-persona="producer"] .machinery{display:none}
 {% endblock %}
 
 {% block content %}
+<!-- ══════════════════════════════════════════════════════ PINNED, above the tabs.
+     Two things never go behind a tab: the plain-language answer, and whether the agent's
+     write claims held up. -->
+
 <!-- The plain-language answer, for whoever did not come here to read latency bars. -->
 <section class="plain sect" id="plainAgent">
   <div class="card">
@@ -159,10 +180,9 @@ html[data-persona="producer"] .machinery{display:none}
   </div>
 </section>
 
-<!-- ====================================================== 1. WRITE CLAIMS
-     The headline. Everything else on this page is cost accounting; this is the honesty
+<!-- The headline. Everything in the tabs below is cost accounting; this is the honesty
      accounting, and it is the reason the page exists. -->
-<section class="sect machinery">
+<section class="sect machinery" id="claimSection">
   <h2>Write-claim verification · the agent's self-report, checked</h2>
   <div class="zone" id="claimZone" data-state="loading">
 
@@ -177,6 +197,7 @@ html[data-persona="producer"] .machinery{display:none}
         HTTP API — <code class="mono">/api/search</code>, <code class="mono">/api/annotations</code>,
         <code class="mono">/api/v1/provisioning/alert-rules</code> — deliberately <em>not</em> the
         MCP tools the agent just used. The model decides what to do; code decides what is true.
+        Last value reported inside the <span class="winlabel">query</span> window.
       </p>
     </div>
 
@@ -185,12 +206,13 @@ html[data-persona="producer"] .machinery{display:none}
     <div class="st st-empty">
       <div class="emptybox">
         <strong>No verification samples in the query window — this is not "zero false successes".</strong>
-        <p style="margin:.4rem 0 0"><code>/api/agent/metrics</code> asks Prometheus for
-          <em>instant</em> values, and an instant query only sees samples from roughly the last
-          five minutes. If the most recent investigation pushed its telemetry before that, every
-          series here reads empty. Empty means <b>unobserved</b>. Reporting it as a clean sheet
-          would be exactly the laundering this panel exists to prevent — run an investigation, or
-          read the series over a longer range in Grafana (link at the bottom of this page).</p>
+        <p style="margin:.4rem 0 0"><code>/api/agent/metrics</code> asks Prometheus for the last
+          value each series reported inside a <span class="winlabel">bounded</span> window
+          (<code>last_over_time</code>). These series are written once per investigation, not
+          scraped continuously, so if no run pushed its telemetry inside that window every series
+          here reads empty. Empty means <b>unobserved</b>. Reporting it as a clean sheet would be
+          exactly the laundering this panel exists to prevent — run an investigation, or read the
+          series over a longer range in Grafana (the <b>Grafana</b> tab below).</p>
       </div>
     </div>
 
@@ -205,111 +227,130 @@ html[data-persona="producer"] .machinery{display:none}
   </div>
 </section>
 
-<!-- ====================================================== 2. PER-STAGE COST -->
-<section class="sect machinery">
-  <h2>Per-stage cost · where an investigation's time and tokens go</h2>
-  <div class="card">
-    <div class="zone" id="costZone" data-state="loading">
-      <div class="st st-ready">
-        <div class="rows" id="costRows"></div>
-        <div class="legend">
-          <span><i style="background:var(--amber)"></i>wall clock</span>
-          <span><i style="background:var(--violet)"></i>prompt tokens</span>
-          <span><i style="background:var(--cyan)"></i>candidate tokens</span>
-          <span id="costTotal"></span>
+<hr class="pinfoot">
+
+<!-- ══════════════════════════════════════════════════════ TABS — the analytics.
+     Four different questions about the same run. The shared primitive in _base.html owns
+     ARIA, arrow keys, the single tab stop, [hidden] panels and the ?tab= round trip. -->
+<div class="machinery" id="agentTabs">
+  <div class="tabs" role="tablist" aria-label="Agent analytics">
+    <button role="tab" id="tab-cost"     data-tab="cost"     aria-selected="true"  aria-controls="panel-cost">Cost</button>
+    <button role="tab" id="tab-latency"  data-tab="latency"  aria-selected="false" aria-controls="panel-latency">Latency</button>
+    <button role="tab" id="tab-failures" data-tab="failures" aria-selected="false" aria-controls="panel-failures">Failures</button>
+    <button role="tab" id="tab-grafana"  data-tab="grafana"  aria-selected="false" aria-controls="panel-grafana">Grafana</button>
+  </div>
+  <p class="tabnote" id="tabNote">Reading the agent's own series…</p>
+
+  <!-- ---------------------------------------------------------- cost -->
+  <section class="tabpanel" role="tabpanel" data-tab="cost" id="panel-cost"
+           aria-labelledby="tab-cost" aria-describedby="tabNote">
+    <div class="card">
+      <div class="zone" id="costZone" data-state="loading">
+        <div class="st st-ready">
+          <div class="rows" id="costRows"></div>
+          <div class="legend">
+            <span><i style="background:var(--amber)"></i>wall clock</span>
+            <span><i style="background:var(--violet)"></i>prompt tokens</span>
+            <span><i style="background:var(--cyan)"></i>candidate tokens</span>
+            <span id="costTotal"></span>
+          </div>
+          <p class="why" id="costWhy"></p>
         </div>
-        <p class="why" id="costWhy"></p>
-      </div>
-      <div class="st st-loading"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
-      <div class="st st-empty">
-        <div class="emptybox"><strong>No stage samples in the query window.</strong>
-          <p style="margin:.35rem 0 0">Same cause as above: instant queries see ~5 minutes.
-            <code>second_unit_run_seconds</code> exists in the stack — it is just older than the
-            lookback. Nothing is inferred in its absence.</p></div>
-      </div>
-      <div class="st st-error"><div class="errbox"><div class="t">✗ Metrics unavailable</div>
-        <div class="m" id="costErrMsg">—</div></div></div>
-    </div>
-  </div>
-</section>
-
-<!-- ====================================================== 3. TOOL LATENCY -->
-<section class="sect machinery">
-  <h2>Tool latency · slowest first</h2>
-  <div class="card">
-    <div class="zone" id="latZone" data-state="loading">
-      <div class="st st-ready">
-        <div class="rows" id="latRows"></div>
-        <p class="dim" style="font-size:.78rem;margin:.7rem 0 0">
-          <code class="mono">second_unit_tool_latency_ms{stage,tool}</code> — one MCP round trip,
-          measured in the agent around the call. This is the bridge plus Grafana plus the
-          datasource, not the model.
-        </p>
-      </div>
-      <div class="st st-loading"><div class="skel"></div><div class="skel"></div></div>
-      <div class="st st-empty">
-        <div class="emptybox"><strong>No tool-latency samples in the query window.</strong>
-          <p style="margin:.35rem 0 0">A stage that made no MCP calls emits none — the
-            remediation planner has no tools at all, by construction.</p></div>
-      </div>
-      <div class="st st-error"><div class="errbox"><div class="t">✗ Metrics unavailable</div>
-        <div class="m" id="latErrMsg">—</div></div></div>
-    </div>
-  </div>
-</section>
-
-<!-- ====================================================== 4. FAILURES -->
-<section class="sect machinery">
-  <h2>Stage failures · bucketed reasons</h2>
-  <div class="card">
-    <div class="zone" id="failZone" data-state="loading">
-      <div class="st st-ready"><ul class="fails" id="failRows"></ul></div>
-      <div class="st st-loading"><div class="skel"></div></div>
-      <div class="st st-empty">
-        <div class="calm">
-          <div class="t">✓ No failures recorded</div>
-          <div class="d">No sample of <code class="mono">second_unit_stage_failures_total</code> in
-            the window. Every stage that ran, ran to a schema-valid result. Reasons are bucketed to
-            four values — <b>quota</b>, <b>budget</b>, <b>unparseable</b>, <b>no_response</b> —
-            because unbounded label values are the one way adding observability can harm the host
-            stack.</div>
+        <div class="st st-loading"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+        <div class="st st-empty">
+          <div class="emptybox"><strong>No stage samples in the query window — unobserved, not zero.</strong>
+            <p style="margin:.35rem 0 0">Same cause as the headline above: these series are written
+              once per run, and the query only looks back
+              <span class="winlabel">a bounded window</span>.
+              <code>second_unit_run_seconds</code> exists in the stack — it is just older than that.
+              Nothing is inferred in its absence.</p></div>
         </div>
+        <div class="st st-error"><div class="errbox"><div class="t">✗ Metrics unavailable</div>
+          <div class="m" id="costErrMsg">—</div></div></div>
       </div>
-      <div class="st st-error"><div class="errbox"><div class="t">✗ Metrics unavailable</div>
-        <div class="m" id="failErrMsg">—</div></div></div>
     </div>
-  </div>
-</section>
+  </section>
 
-<!-- ====================================================== 5. GRAFANA -->
-<section class="sect machinery">
-  <h2>The same numbers, in Grafana</h2>
-  <div class="card">
-    <p style="margin:0 0 .6rem;font-size:.86rem;color:var(--ink2)">
-      Grafana is both this agent's tool surface (over MCP) and the backend its own telemetry
-      lands in, so nothing on this page is a private copy. The metrics above are the
-      <code class="mono">second_unit_*</code> series under <code class="mono">job="second-unit-agent"</code>,
-      queryable in <b>Explore → Prometheus</b>. ADK instruments itself with OpenTelemetry GenAI
-      semantic conventions, and those spans for these runs are exported to
-      <b>Grafana Cloud AI Observability</b> in the same stack under service name
-      <code class="mono">second-unit</code> (the web process traces separately as
-      <code class="mono">second-unit-web</code>) — open the AI Observability app and filter by that
-      service.
-    </p>
-    <a class="glink" id="gLink" href="#" rel="noreferrer noopener" target="_blank">↗ open the stack</a>
-    <p class="dim" style="font-size:.74rem;margin:.6rem 0 0" id="gNote">
-      Deliberately the stack root and not a deep link: this page cannot verify the app's URL path
-      for your stack, and a broken deep link is worse than a short instruction.
-    </p>
-  </div>
-</section>
+  <!-- ------------------------------------------------------- latency -->
+  <section class="tabpanel" role="tabpanel" data-tab="latency" id="panel-latency"
+           aria-labelledby="tab-latency" aria-describedby="tabNote">
+    <div class="card">
+      <div class="zone" id="latZone" data-state="loading">
+        <div class="st st-ready">
+          <div class="rows" id="latRows"></div>
+          <p class="dim" style="font-size:.78rem;margin:.7rem 0 0">
+            <code class="mono">second_unit_tool_latency_ms{stage,tool}</code> — one MCP round trip,
+            measured in the agent around the call. This is the bridge plus Grafana plus the
+            datasource, not the model.
+          </p>
+        </div>
+        <div class="st st-loading"><div class="skel"></div><div class="skel"></div></div>
+        <div class="st st-empty">
+          <div class="emptybox"><strong>No tool-latency samples in the query window — unobserved, not zero.</strong>
+            <p style="margin:.35rem 0 0">Either no run reported inside the last
+              <span class="winlabel">window</span>, or the stages that ran made no MCP calls — the
+              remediation planner has no tools at all, by construction.</p></div>
+        </div>
+        <div class="st st-error"><div class="errbox"><div class="t">✗ Metrics unavailable</div>
+          <div class="m" id="latErrMsg">—</div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------ failures -->
+  <section class="tabpanel" role="tabpanel" data-tab="failures" id="panel-failures"
+           aria-labelledby="tab-failures" aria-describedby="tabNote">
+    <div class="card">
+      <div class="zone" id="failZone" data-state="loading">
+        <div class="st st-ready"><ul class="fails" id="failRows"></ul></div>
+        <div class="st st-loading"><div class="skel"></div></div>
+        <div class="st st-empty">
+          <div class="calm">
+            <div class="t">✓ No failures recorded</div>
+            <div class="d">No sample of <code class="mono">second_unit_stage_failures_total</code> in
+              the <span class="winlabel">query</span> window. Every stage that ran, ran to a
+              schema-valid result. Reasons are bucketed to four values — <b>quota</b>,
+              <b>budget</b>, <b>unparseable</b>, <b>no_response</b> — because unbounded label values
+              are the one way adding observability can harm the host stack.</div>
+          </div>
+        </div>
+        <div class="st st-error"><div class="errbox"><div class="t">✗ Metrics unavailable</div>
+          <div class="m" id="failErrMsg">—</div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------- grafana -->
+  <section class="tabpanel" role="tabpanel" data-tab="grafana" id="panel-grafana"
+           aria-labelledby="tab-grafana" aria-describedby="tabNote">
+    <div class="card">
+      <p style="margin:0 0 .6rem;font-size:.86rem;color:var(--ink2)">
+        Grafana is both this agent's tool surface (over MCP) and the backend its own telemetry
+        lands in, so nothing on this page is a private copy. The metrics in the other tabs are the
+        <code class="mono">second_unit_*</code> series under <code class="mono">job="second-unit-agent"</code>,
+        queryable in <b>Explore → Prometheus</b>. ADK instruments itself with OpenTelemetry GenAI
+        semantic conventions, and those spans for these runs are exported to
+        <b>Grafana Cloud AI Observability</b> in the same stack under service name
+        <code class="mono">second-unit</code> (the web process traces separately as
+        <code class="mono">second-unit-web</code>) — open the AI Observability app and filter by that
+        service.
+      </p>
+      <a class="glink" id="gLink" href="#" rel="noreferrer noopener" target="_blank">↗ open the stack</a>
+      <p class="dim" style="font-size:.74rem;margin:.6rem 0 0" id="gNote">
+        Deliberately the stack root and not a deep link: this page cannot verify the app's URL path
+        for your stack, and a broken deep link is worse than a short instruction.
+      </p>
+    </div>
+  </section>
+</div>
 
 <p class="dim" style="font-size:.74rem">
   Source: <code class="mono">GET /api/agent/metrics</code>, which reads the series back out of
-  Prometheus through Grafana's datasource proxy. Nothing is served from the web process's memory.
-  Instant queries, so every panel shows the latest sample within roughly a five-minute lookback —
-  if a series is missing from the last run, its value here is the last run that emitted it.
-  Refreshed every 20&nbsp;s.
+  Prometheus through Grafana's datasource proxy. Nothing is served from the web process's memory,
+  so this page cannot flatter the agent. One fetch feeds the pinned headline and all four tabs, so
+  they cannot disagree; switching tabs re-reads nothing. Each series is the last value a run
+  reported inside a <span class="winlabel">bounded</span> window — these are the numbers of the
+  most recent investigation, not of this minute. Refreshed every 20&nbsp;s.
 </p>
 {% endblock %}
 
@@ -318,6 +359,19 @@ html[data-persona="producer"] .machinery{display:none}
 <p>Our own agent's telemetry, read back from the stack it writes to. The page is here to make
 the agent falsifiable: it reports what an investigation cost, what failed, and whether the
 writes it claimed actually happened.</p>
+
+<h4>What is pinned, and why</h4>
+<p>Two things sit above the tabs and are never hidden by a tab choice:</p>
+<ul>
+  <li>the <b>plain-language verdict</b> — the same payload, translated for a reader whose question
+    is "can I act on this?" rather than "what did it cost?" (shown to supervisor and producer);</li>
+  <li>the <b>write-claim verification</b> headline — <code>confirmed</code>,
+    <code>honest_failure</code>, <code>unchecked</code>, <code>false_success</code>.</li>
+</ul>
+<p>The tabs hold cost, latency, failures and the Grafana link-out. That split is the argument of
+the page: everything in a tab is accounting, and the pinned block is the only part that says
+whether the agent's self-report was true. A <code>false_success</code> above zero is forced
+visible for every persona — it is not something a view setting gets to suppress.</p>
 
 <h4>The self-report is a claim</h4>
 <p>An agent that says "annotation created" has produced a sentence, not a result. In a real run
@@ -348,18 +402,24 @@ report you would have concluded three writes landed. One did. That run is why
     It is drawn hatched red and given the top of the page whenever it is above zero.</li>
 </ul>
 
-<h4>Where the numbers come from</h4>
+<h4>Where each number comes from</h4>
+<p>All of it from one request — <code>GET /api/agent/metrics</code> — read back out of Prometheus,
+never held in the web process's memory. Per tab:</p>
 <ul>
-  <li><code>second_unit_run_seconds{stage}</code> — wall clock per stage, plus a
-    <code>stage="total"</code> series for the run, shown separately rather than as a row.</li>
-  <li><code>second_unit_tool_calls_total{stage}</code> — MCP calls per stage.</li>
-  <li><code>second_unit_tokens_total{stage,kind}</code> — <code>prompt</code> and
-    <code>candidate</code> tokens per stage.</li>
-  <li><code>second_unit_tool_latency_ms{stage,tool}</code> — per-call round trip, measured around
-    the call in the agent.</li>
-  <li><code>second_unit_stage_failures_total{stage,reason}</code> — bucketed to four reasons so the
-    label cardinality stays bounded.</li>
+  <li><b>pinned headline</b> — <code>second_unit_write_claims_total{outcome}</code>.</li>
+  <li><b>Cost</b> — <code>second_unit_run_seconds{stage}</code> for wall clock (plus a
+    <code>stage="total"</code> series for the run, shown in the legend rather than as a row),
+    <code>second_unit_tool_calls_total{stage}</code> for MCP calls, and
+    <code>second_unit_tokens_total{stage,kind}</code> for <code>prompt</code> and
+    <code>candidate</code> tokens.</li>
+  <li><b>Latency</b> — <code>second_unit_tool_latency_ms{stage,tool}</code>, per-call round trip
+    measured around the call in the agent, slowest first.</li>
+  <li><b>Failures</b> — <code>second_unit_stage_failures_total{stage,reason}</code>, bucketed to
+    four reasons so the label cardinality stays bounded.</li>
+  <li><b>Grafana</b> — <code>GRAFANA_URL</code> from the server, stack root only.</li>
 </ul>
+<p>The count pill on each tab is computed from that same payload: stages observed, tool round trips
+measured, failures recorded. A pill reading <code>–</code> means the series was absent, not zero.</p>
 
 <h4>Why the page cannot flatter the agent</h4>
 <p>These metrics are not kept in the web process. They are pushed to Prometheus by the agent
@@ -368,13 +428,15 @@ back by <code>/api/agent/metrics</code> through Grafana's datasource proxy. The 
 dashboard are reading the same samples, so a number here that nobody can reproduce in Explore is a
 bug in this page, not a favourable reading.</p>
 
-<div class="dnote">Instant queries have a ~5 minute lookback, so a run older than that leaves every
-panel empty. Empty is rendered as <em>unobserved</em>, never as zero — particularly for
-<code>false_success</code>, where "no data" and "none" are opposite claims.</div>
+<div class="dnote">These series are written once per investigation, so the endpoint asks for
+<code>last_over_time</code> over a window (<code>window</code> in the response, named in every tab
+note) rather than an instant value. A run older than that window leaves every panel empty. Empty is
+rendered as <em>unobserved</em>, never as zero — particularly for <code>false_success</code>, where
+"no data" and "none" are opposite claims.</div>
 
 <h4>Cost, and why two model tiers</h4>
 <p>Tool-using stages spend most of their tokens on telemetry pulled into context rather than on
-generated text — the prompt:candidate ratio in the panel is the evidence. Retrieval work that is
+generated text — the prompt:candidate ratio in the Cost tab is the evidence. Retrieval work that is
 mostly "fetch and summarise" runs on the cheaper Flash model
 (<code>GEMINI_MODEL</code>); the two stages whose output people plan around — the diagnosis and
 the impact forecast — get the stronger model (<code>GEMINI_MODEL_STRONG</code>). The tier shown
@@ -385,55 +447,15 @@ the strong model is also the first to hit a quota, and a degraded-but-answering 
 
 {% block scripts %}
 <script>
-/* Populated from the same /api/agent/metrics payload the machinery below uses, so the two
-   can never disagree. Deliberately blunt: the interesting answer here is either "yes, and
-   here is how we know" or "no — it claimed writes that were not there". */
-(function plainAgentView(){
-  function say(verdict, detail){
-    const v = document.getElementById("plainVerdict");
-    const d = document.getElementById("plainDetail");
-    if (v) v.textContent = verdict;
-    if (d) d.textContent = detail;
-  }
-  document.getElementById("plainReveal")?.addEventListener("click", () => {
-    document.querySelectorAll(".machinery").forEach((m) => m.style.display = "block");
-    document.getElementById("plainReveal").style.display = "none";
-  });
-  fetch("/api/agent/metrics").then((r) => r.json()).then((d) => {
-    const by = {};
-    (d.write_claims || []).forEach((x) => by[x.labels.outcome] = x.value);
-    const fs = by.false_success || 0, ok = by.confirmed || 0;
-    const hf = by.honest_failure || 0;
-    const claims = ok + fs + hf + (by.unchecked || 0);
-    const calls = (d.tool_calls || []).reduce((a, x) => a + x.value, 0);
-    if (!claims && !calls) {
-      say("No recent run to judge.",
-          "The agent has not run inside the last " + (d.window || "6h") + ", so there is " +
-          "nothing to check. That is different from a clean record.");
-      return;
-    }
-    if (fs > 0) {
-      say("Not entirely — " + fs + " of its write claims did not hold up.",
-          "The agent reported " + fs + " change" + (fs > 1 ? "s" : "") + " to Grafana that " +
-          "an independent check could not find. " + ok + " did hold up and " + hf +
-          " were honest failures it reported correctly. This is exactly why nothing is " +
-          "written without your approval, and why every write is checked afterwards " +
-          "through a different channel than the one the agent used.");
-    } else {
-      say("Yes — every write it claimed was verified.",
-          ok + " claimed change" + (ok === 1 ? "" : "s") + " confirmed in the stack, " + hf +
-          " failure" + (hf === 1 ? "" : "s") + " it reported honestly, and no claim that " +
-          "could not be found. Across the run it made " + calls + " calls to Grafana.");
-    }
-  }).catch(() => say("Could not read the agent's record.",
-      "The metrics endpoint did not respond, so this page cannot vouch for anything."));
-})();
-</script>
-<script>
 /* /agent — read the agent's own series and render them with divs.
    No charting library: strict CSP, no external requests, no build step. Bars are one div
    with a width, which is all a bar has ever been.
-   IIFE so nothing collides with the shell's globals ($, esc, fresh). */
+   IIFE so nothing collides with the shell's globals ($, esc, fresh, initTabs).
+
+   ONE fetch feeds everything: the pinned plain-language verdict, the pinned write-claim
+   headline, and all four tab panels. It used to be two fetches — the plain view had its own —
+   which is one round trip too many and, worse, two readings of the same question that could
+   disagree. Switching tabs re-reads nothing; the poll timer is the only refetch. */
 (() => {
   "use strict";
 
@@ -482,6 +504,87 @@ the strong model is also the first to hit a quota, and a degraded-but-answering 
   const secs = (n) => (Number(n) || 0).toFixed(1) + "s";
   const pctOf = (v, max) => (max > 0 ? Math.max(1.5, (v / max) * 100) : 0);
 
+  /* ------------------------------------------------------------------ tabs
+     The window the numbers came from is not known until the first response, so the tab
+     notes are painted twice: once at init with the metric names, again when `window`
+     arrives. A note that says "24h" before anything has been read would be a guess. */
+  let WINDOW = null;
+  let curTab = "cost";
+
+  const NOTES = {
+    cost: (w) => `Per-stage wall clock (<code class="mono">second_unit_run_seconds</code>), MCP calls
+      (<code class="mono">second_unit_tool_calls_total</code>) and tokens by stage and kind
+      (<code class="mono">second_unit_tokens_total</code>) — ${w}, so these are the most recent
+      run's numbers, not a live average.`,
+    latency: (w) => `<code class="mono">second_unit_tool_latency_ms{stage,tool}</code>, one row per
+      stage and tool, slowest first — ${w}.`,
+    failures: (w) => `<code class="mono">second_unit_stage_failures_total{stage,reason}</code> —
+      ${w}. Nothing recorded is the good outcome, and it is reported as "none recorded",
+      never as a blank panel.`,
+    grafana: () => `Where to read these same series yourself, in the stack the agent both queries
+      and reports into. Stack root only — no deep link this page cannot verify.`,
+  };
+  const winPhrase = () =>
+    WINDOW ? `last value reported inside a ${esc(WINDOW)} window` : "read back from Prometheus";
+
+  function paintNotes() {
+    const el = $("tabNote");
+    if (el) el.innerHTML = (NOTES[curTab] || (() => ""))(winPhrase());
+    /* Every honest empty state names the same window, so nobody reads "empty" as "zero". */
+    const w = WINDOW ? esc(WINDOW) : null;
+    if (w) document.querySelectorAll(".winlabel").forEach((s) => { s.textContent = w; });
+  }
+
+  const tabs = initTabs("agentTabs", {
+    param: "tab",
+    onChange: (id) => { curTab = id; paintNotes(); },
+  });
+
+  /* A pill of "–" means the series was absent: unobserved, not zero. Only a series we
+     actually read gets a number. */
+  const DASH = "–";
+
+  /* ------------------------------------------------------------------ plain
+     Deliberately blunt: the interesting answer here is either "yes, and here is how we
+     know" or "no — it claimed writes that were not there". Same payload as the machinery,
+     so the two can never disagree. */
+  function say(verdict, detail) {
+    const v = $("plainVerdict"), d = $("plainDetail");
+    if (v) v.textContent = verdict;
+    if (d) d.textContent = detail;
+  }
+  function renderPlain(d) {
+    const by = {};
+    (d.write_claims || []).forEach((x) => by[(x.labels || {}).outcome] = x.value);
+    const fs = by.false_success || 0, ok = by.confirmed || 0;
+    const hf = by.honest_failure || 0;
+    const claims = ok + fs + hf + (by.unchecked || 0);
+    const calls = (d.tool_calls || []).reduce((a, x) => a + (Number(x.value) || 0), 0);
+    if (!claims && !calls) {
+      say("No recent run to judge.",
+          "The agent has not run inside the last " + (d.window || "query window") + ", so there " +
+          "is nothing to check. That is different from a clean record.");
+      return;
+    }
+    if (fs > 0) {
+      say("Not entirely — " + fs + " of its write claims did not hold up.",
+          "The agent reported " + fs + " change" + (fs > 1 ? "s" : "") + " to Grafana that " +
+          "an independent check could not find. " + ok + " did hold up and " + hf +
+          " were honest failures it reported correctly. This is exactly why nothing is " +
+          "written without your approval, and why every write is checked afterwards " +
+          "through a different channel than the one the agent used.");
+    } else {
+      say("Yes — every write it claimed was verified.",
+          ok + " claimed change" + (ok === 1 ? "" : "s") + " confirmed in the stack, " + hf +
+          " failure" + (hf === 1 ? "" : "s") + " it reported honestly, and no claim that " +
+          "could not be found. Across the run it made " + calls + " calls to Grafana.");
+    }
+  }
+  $("plainReveal")?.addEventListener("click", () => {
+    document.querySelectorAll(".machinery").forEach((m) => m.style.display = "block");
+    $("plainReveal").style.display = "none";
+  });
+
   /* ---------------------------------------------------------------- claims */
   function renderClaims(rows) {
     const m = byLabel(rows, "outcome");
@@ -520,7 +623,7 @@ the strong model is also the first to hit a quota, and a degraded-but-answering 
 
     $("claimTiles").innerHTML = OUTCOMES.map(([k, def]) => `
       <div class="oc" data-o="${k}">
-        <b>${m.has(k) ? num(m.get(k)) : "–"}</b>
+        <b>${m.has(k) ? num(m.get(k)) : DASH}</b>
         <span class="name">${k.replace("_", " ")}</span>
         <span class="def">${esc(def)}</span>
       </div>`).join("");
@@ -545,7 +648,11 @@ the strong model is also the first to hit a quota, and a degraded-but-answering 
     }
 
     const stages = [...new Set([...sec.keys(), ...calls.keys(), ...prompt.keys(), ...cand.keys()])];
-    if (!stages.length) { setState("costZone", "empty"); return; }
+    if (!stages.length) {
+      setState("costZone", "empty");
+      if (tabs) tabs.count("cost", DASH);   // absent, not "0 stages"
+      return;
+    }
 
     /* Pipeline order, not alphabetical and not by size: a reader is following a run. */
     stages.sort((a, b) => {
@@ -613,6 +720,7 @@ the strong model is also the first to hit a quota, and a degraded-but-answering 
          share cannot be computed from these samples — the claim is not asserted without them.`;
 
     setState("costZone", "ready");
+    if (tabs) tabs.count("cost", stages.length);
   }
 
   /* --------------------------------------------------------------- latency */
@@ -621,7 +729,11 @@ the strong model is also the first to hit a quota, and a degraded-but-answering 
       .filter((r) => r.labels && r.labels.tool)
       .map((r) => ({stage:r.labels.stage || "?", tool:r.labels.tool, ms:Number(r.value) || 0}))
       .sort((a, b) => b.ms - a.ms);
-    if (!items.length) { setState("latZone", "empty"); return; }
+    if (!items.length) {
+      setState("latZone", "empty");
+      if (tabs) tabs.count("latency", DASH);
+      return;
+    }
     const max = items[0].ms;
     $("latRows").innerHTML = items.map((it) => `
       <div class="srow">
@@ -630,12 +742,20 @@ the strong model is also the first to hit a quota, and a degraded-but-answering 
         <div class="val${it.ms === max ? " hot" : ""}">${num(Math.round(it.ms))} ms</div>
       </div>`).join("");
     setState("latZone", "ready");
+    if (tabs) tabs.count("latency", items.length);
   }
 
-  /* -------------------------------------------------------------- failures */
-  function renderFailures(rows) {
+  /* -------------------------------------------------------------- failures
+     `observed` says whether this run was seen at all. Without it a stack with no run in the
+     window would get a confident "0 failures" pill next to a panel saying "unobserved" — the
+     same conflation the headline exists to prevent. */
+  function renderFailures(rows, observed) {
     const items = (rows || []).filter((r) => (Number(r.value) || 0) > 0);
-    if (!items.length) { setState("failZone", "empty"); return; }   // empty here is good news
+    if (!items.length) {
+      setState("failZone", "empty");                 // empty here is good news
+      if (tabs) tabs.count("failures", observed ? "0" : DASH);
+      return;
+    }
     items.sort((a, b) => (Number(b.value) || 0) - (Number(a.value) || 0));
     $("failRows").innerHTML = items.map((r) => {
       const st = (r.labels || {}).stage || "?";
@@ -647,6 +767,8 @@ the strong model is also the first to hit a quota, and a degraded-but-answering 
       </li>`;
     }).join("");
     setState("failZone", "ready");
+    const totalFails = items.reduce((a, r) => a + (Number(r.value) || 0), 0);
+    if (tabs) tabs.count("failures", num(totalFails), "bad");
   }
 
   function renderGrafana(url) {
@@ -672,6 +794,11 @@ the strong model is also the first to hit a quota, and a degraded-but-answering 
       $(el).textContent = msg;
       setState(zone, "error");
     }
+    /* Unread is not zero and not clean: every pill goes back to "absent". */
+    if (tabs) { tabs.count("cost", DASH); tabs.count("latency", DASH);
+                tabs.count("failures", DASH); }
+    say("Could not read the agent's record.",
+        "The metrics endpoint did not respond, so this page cannot vouch for anything.");
     fresh("bad", "metrics unreadable");
   }
 
@@ -685,11 +812,23 @@ the strong model is also the first to hit a quota, and a degraded-but-answering 
       fail((err && err.message) ? err.message : String(err));
       return;
     }
+    WINDOW = data.window || null;
+    paintNotes();
+
+    renderPlain(data);
     const fs = renderClaims(data.write_claims);
     renderCost(data.stage_seconds, data.tool_calls, data.tokens);
     renderLatency(data.tool_latency_ms);
-    renderFailures(data.failures);
+    /* "Did we see this run at all?" — any stage or claim series is evidence of a run. */
+    const observed = (data.stage_seconds || []).length > 0 ||
+                     (data.tool_calls || []).length > 0 ||
+                     (data.write_claims || []).length > 0;
+    renderFailures(data.failures, observed);
     renderGrafana(data.grafana_url);
+
+    /* A false success is never behind a persona setting: the pinned headline is forced
+       visible whenever there is one, whoever is looking. */
+    document.documentElement.dataset.agentalarm = fs > 0 ? "1" : "0";
 
     /* The freshness chip reports the agent's honesty, not the fetch: a successful fetch of
        "1 false success" is not a healthy state. */
@@ -698,6 +837,7 @@ the strong model is also the first to hit a quota, and a degraded-but-answering 
     else fresh("live", "claims verified");
   }
 
+  paintNotes();
   load();
   let timer = setInterval(load, POLL_MS);
   document.addEventListener("visibilitychange", () => {

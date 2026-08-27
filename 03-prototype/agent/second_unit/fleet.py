@@ -24,6 +24,16 @@ import requests
 AT_RISK_HOURS = 0.0        # ETA past the deadline at all -> at risk
 CRITICAL_HOURS = 1.0       # more than an hour late -> critical
 
+#: Rates above this are not physically possible on this farm, so they are not reported.
+#:
+#: The farm is 12 nodes; the fastest department manages about 16 frames a minute each, so
+#: ~190/min is the absolute ceiling and real numbers sit near 10. A counter reset — which
+#: happens whenever the seeder restarts — makes rate() return values in the hundreds, and
+#: the console rendered 986 fr/min as a healthy pass and then declared every shot clear of
+#: its deadline. `forecast_delivery` already refuses this class of input; the sweep that
+#: feeds the whole console did not, which is the wrong way round.
+IMPLAUSIBLE_RATE_PER_MIN = 200.0
+
 
 @dataclass
 class ShotStatus:
@@ -156,6 +166,17 @@ def fleet_status(deadline_iso: str, *, window: str = "15m") -> List[ShotStatus]:
             out.append(ShotStatus(shot, dept, 0, rate, None,
                 deadline_by_shot.get(shot, deadline).isoformat(timespec="minutes"),
                 None, "done", "pass complete"))
+            continue
+        if rate > IMPLAUSIBLE_RATE_PER_MIN:
+            # Report the measurement as untrustworthy rather than forecasting from it. An
+            # honest "cannot measure" beats a confident "on track" derived from a number
+            # the farm cannot produce.
+            out.append(ShotStatus(
+                shot, dept, left, round(rate, 2), None,
+                deadline_by_shot.get(shot, deadline).isoformat(timespec="minutes"),
+                None, "unknown",
+                f"{rate:.0f} frames/min is not possible on this farm — a counter reset in "
+                f"the rate window. No forecast made."))
             continue
         if rate <= 0:
             out.append(ShotStatus(shot, dept, left, 0.0, None,
