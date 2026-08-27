@@ -24,3 +24,8 @@ __pycache__/
 # directory stays private and there is one canonical copy of each.
 02-planning/
 README-internal.md
+
+# Generated video assets: narration MP3s, timing manifest, subtitles, captured segments.
+# Regenerable from ops/beats.py in one command, and a 1MB audio track has no business in
+# git history when the script that produces it is right there.
+03-prototype/ops/out/
