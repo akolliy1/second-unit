@@ -11,7 +11,8 @@ into Grafana.
 Built for the Agentic Cinema Hackathon, Grafana Labs track.
 
 - **Live demo:** https://second-unit-dzqjw5tifq-uc.a.run.app
-- **Video:** _(to be added)_
+- **Video:** https://youtu.be/hxLdecRc7QM (2:51, with subtitles)
+- **Source:** https://github.com/akolliy1/second-unit (MIT)
 
 ---
 
