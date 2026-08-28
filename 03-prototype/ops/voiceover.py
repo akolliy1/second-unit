@@ -99,9 +99,38 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true",
                     help="estimate durations from word count, make no API calls")
     ap.add_argument("--voice", default=None, help="override the TTS voice name")
+    ap.add_argument("--captions-only", action="store_true",
+                    help="rewrite demo.srt from the existing manifest's timings, without "
+                         "synthesising anything. For a caption fix that must not move a frame.")
     args = ap.parse_args()
 
     OUT.mkdir(parents=True, exist_ok=True)
+
+    if args.captions_only:
+        # Re-synthesising to fix a typo would shift every duration by a few milliseconds and
+        # invalidate footage that is already correct. The timings are a measurement; only the
+        # text changes.
+        manifest = json.loads((OUT / "manifest.json").read_text())
+        by_n = {b["n"]: b for b in BEATS}
+        changed = 0
+        for r in manifest["beats"]:
+            fresh = by_n.get(r["n"])
+            if fresh and fresh["caption"] != r["caption"]:
+                r["caption"] = fresh["caption"]
+                changed += 1
+        mpath = OUT / "manifest.json"
+        was = mpath.stat().st_mtime
+        mpath.write_text(json.dumps(manifest, indent=2))
+        os.utime(mpath, (was, was))
+        srt, idx = [], 1
+        for r in manifest["beats"]:
+            for a, b_, text in _cues(r["caption"], r["start"], r["duration"]):
+                srt.append(f"{idx}\n{_srt_time(a)} --> {_srt_time(b_)}\n{text}\n")
+                idx += 1
+        (OUT / "demo.srt").write_text("\n".join(srt))
+        print(f"  {changed} caption(s) updated, {idx - 1} cues rewritten")
+        print(f"  timings untouched: total still {manifest['total_seconds']:.1f}s")
+        return 0
 
     if not args.dry_run:
         from dotenv import load_dotenv

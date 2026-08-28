@@ -63,8 +63,8 @@ BEATS = [
         say="Shot forty two misses Friday's two p.m. client review by two hours and eighteen "
             "minutes. Capacity is down forty six percent, and it puts Northwind, episode "
             "four, at risk. That sentence is what the system exists to produce.",
-        caption="SH042 misses Friday's 14:00 client review by 2h 18m. Capacity is down 46%. "
-                "It puts Northwind S01E04 at risk. That sentence is what the whole system "
+        caption="SH042 misses Friday's 14:00 client review by 2h 18m. Capacity is down 46%, "
+                "and it puts Northwind S01E04 at risk. That sentence is what the system "
                 "exists to produce.",
         # A fixed 2.5s wait was both too long when the page was quick and too short when it
         # was not, and the whole sequence outran its lead, so this beat opened on the Overview
@@ -81,8 +81,9 @@ BEATS = [
         say="Same investigation, in an engineer's framing. Every claim carries the query "
             "that produced it. These are live calls against a real Grafana Cloud stack, "
             "through the M C P server.",
-        caption="Same investigation, engineer's framing. Every claim carries the query that "
-                "produced it: live MCP calls against a real Grafana Cloud stack.",
+        caption="Same investigation, in an engineer's framing. Every claim carries the query "
+                "that produced it. These are live calls against a real Grafana Cloud stack, "
+                "through the MCP server.",
         actions=[("persona", "td"), ("wait", 1.0), ("tab", "evidence"), ("wait", 1.5),
                  ("scrollto", "#evZone")],
     ),
@@ -95,10 +96,8 @@ BEATS = [
             "and whether the render software was at fault, and killed both. An agent that "
             "pattern matches on errors keeps all three.",
         caption="It also rules things out. It asked whether the other five nodes were failing "
-                "too, and whether the render software was at fault, and killed both: the peers "
-                "report zero failed frames and normal temperatures, and lighting frames on "
-                "healthy nodes complete fine. An agent that pattern-matches on 'lots of "
-                "errors' keeps all three.",
+                "too, and whether the render software was at fault, and killed both. An "
+                "agent that pattern-matches on errors keeps all three.",
         actions=[("tab", "pipeline"), ("wait", 1.0),
                  # The hypothesis list is inside the Diagnostician's detail, collapsed by
                  # default. A bare click toggles, so it must be an idempotent expand, and the
@@ -113,10 +112,9 @@ BEATS = [
             "of six; the remaining five clear the backlog at nine point four frames a minute, "
             "and the shot lands sixteen minutes before the review. That's arithmetic in "
             "Python, not the model's opinion.",
-        caption="The plan says drain render-07. The next question is whether that fixes it, so "
-                "we compute it: draining costs 1 of 6 nodes, the remaining five clear the "
-                "backlog at 9.4 fr/min, and SH042 lands ~16 min before the review instead of "
-                "2h 18m after. Arithmetic in Python, not the model's opinion.",
+        caption="The plan says drain render-07. Does that fix it? Draining costs 1 of 6 nodes; "
+                "the remaining five clear the backlog at 9.4 fr/min, and SH042 lands 16 min "
+                "before the review. Arithmetic in Python, not the model's opinion.",
         # The trade-off card carries exactly that sentence, so the narration and the screen
         # say the same thing at the same moment.
         actions=[("scrollto", '[data-f="risk"]'), ("wait", 1.5)],

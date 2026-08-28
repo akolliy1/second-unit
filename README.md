@@ -234,3 +234,6 @@ docs/                  architecture, data model, agent design
 ## License
 
 MIT: see [LICENSE](LICENSE).
+
+
+Demo video: https://youtu.be/hxLdecRc7QM
