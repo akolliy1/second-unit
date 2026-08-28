@@ -186,6 +186,27 @@ that pattern-matches on "lots of warnings" reaches the wrong answer. And the rev
 **published as telemetry** (`shot_review_deadline_seconds`), so the agent discovers the
 commitment rather than being handed it.
 
+## Hackathon compliance, stated plainly
+
+Stage One screening may be automated, so the facts a screen would look for are here rather
+than implied.
+
+**Runtime AI is Google Cloud only.** Every model call in this project goes to Gemini on
+Vertex AI through `google-adk`. No other AI model, agent framework, or AI API is imported or
+invoked anywhere in the codebase: not OpenAI, not Anthropic, not Bedrock, not LangChain, and
+nothing else. `grep -riE "anthropic|openai|bedrock|cohere|mistral|langchain"` over the source
+and every requirements file returns nothing.
+
+**Partner integration is live, not named.** The Grafana track requires the stack at runtime
+through the MCP server. `deploy/Dockerfile` builds the official `grafana/mcp-grafana` v1.2.0
+from source and the container runs it as a bridge; `agent/second_unit/grafana.py` connects to
+it with `McpToolset` and `StreamableHTTPConnectionParams`, and every stage's tools come from
+it. Prometheus and Loki are queried live, and approved write-backs land as annotations,
+dashboards and alert rules.
+
+**Accepted Google Cloud package:** `google-adk` (also `google-cloud-aiplatform` in the spike
+ladder). **Licence:** MIT, detectable in the repository's About section.
+
 ## Running it
 
 ```bash
