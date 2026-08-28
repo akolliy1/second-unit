@@ -349,7 +349,7 @@ html[data-motion="1"] .mq:hover .mq-track{ animation-play-state:paused }
       <div class="stat">
         <b data-stat="calls" data-fmt="int">&hellip;</b>
         <span>agent tool calls, last run</span>
-        <em id="toolsLabel">read back from our own metrics</em>
+        <em id="toolsLabel">read back from its own metrics</em>
       </div>
     </div>
     <p class="statsnote" id="statsNote">Fetched from this service's own APIs when you
@@ -445,7 +445,7 @@ html[data-motion="1"] .mq:hover .mq-track{ animation-play-state:paused }
     </ol>
     <div class="rule rv">
       <p><b>The model decides what it finds. Code decides what happens next.</b></p>
-      <p>Every guarantee we tried to express as an instruction held <em>most</em> of the
+      <p>Every guarantee I tried to express as an instruction held <em>most</em> of the
         time, which is worse than failing, because it passes testing. Nothing is written
         without human approval because the planning stage has no mutating tools and the
         executor is constructed only from an approval record. The delivery forecast is
@@ -494,11 +494,11 @@ html[data-motion="1"] .mq:hover .mq-track{ animation-play-state:paused }
       </div>
     </div>
     <p class="sub rv" style="margin-top:1.4rem">That last outcome is not hypothetical. It is
-      why the module exists, we watched an agent report a write it had not made. So the
+      why the module exists, I watched an agent report a write it had not made. So the
       outcome is a metric, graphable next to everything else, and visible on the Agent page
       of the console:</p>
     <code class="metric rv">second_unit_write_claims_total{outcome="false_success"}</code>
-    <p class="tiny rv" id="claimNote">Counts are the last recorded values from our own
+    <p class="tiny rv" id="claimNote">Counts are the last recorded values from its own
       observability series, read back from Prometheus.</p>
   </div>
 </section>
@@ -778,7 +778,7 @@ html[data-motion="1"] .mq:hover .mq-track{ animation-play-state:paused }
 
     var cn = document.getElementById("claimNote");
     if (cn && d.window) {
-      cn.textContent = "Counts are the last recorded values from our own observability " +
+      cn.textContent = "Counts are the last recorded values from its own observability " +
         "series, read back from Prometheus over a " + d.window + " window, the same " +
         "numbers that are in Grafana, from the same source.";
     }

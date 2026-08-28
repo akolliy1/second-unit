@@ -73,7 +73,7 @@ in-flight shot with no model involved, so the agent is spent only on the excepti
 
 **1. The model decides what it finds. Code decides what happens next.**
 
-Every guarantee we tried to express as an instruction held *most* of the time, which is worse
+Every guarantee I tried to express as an instruction held *most* of the time, which is worse
 than failing, because it passes testing. Each one now lives in code:
 
 | Guarantee | Where it lives |
@@ -130,7 +130,7 @@ and called, not named in a README. Exact call sites:
 
 ## On the MCP connection, precisely
 
-Grafana's hosted Cloud MCP endpoint cannot be used by an unattended process, and we can show
+Grafana's hosted Cloud MCP endpoint cannot be used by an unattended process, and I can show
 why rather than assert it. Its authorization-server metadata advertises:
 
 ```
@@ -139,7 +139,7 @@ grant_types_supported: ["authorization_code", "refresh_token"]
 
 No `client_credentials`. Every supported grant needs a user agent that can complete a redirect,
 so a headless deployment cannot obtain a token, a property of the authorization server, not a
-header we got wrong. All five surfaces we probed refused a static service account token
+header I got wrong. All five surfaces I probed refused a static service account token
 ([`spike/probe_mcp.py`](03-prototype/spike/probe_mcp.py) reproduces it).
 
 So Second Unit bridges through Grafana's **official open-source `mcp-grafana` server** against
@@ -155,7 +155,7 @@ frame counts and review dates, exactly the shape a mid-size unit publishes.
 It grows with **no scheduler, no database and no intervention**, because the catalogue is a
 pure function of the date: `catalog(as_of)` returns the same shots on the same day in every
 process, forever. That also makes duplicate ids impossible, they are keyed to a global
-index: and means the slate keeps filling after we stop touching it.
+index: and means the slate keeps filling after I stop touching it.
 
 Live telemetry is deliberately smaller: only the ~60 passes actually rendering get
 Prometheus series, because a completed shot has nothing left to measure and hundreds of idle
