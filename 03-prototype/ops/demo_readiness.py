@@ -82,7 +82,7 @@ def main() -> int:
     shown = [x for x in shots if interesting(x)]
     rest = [x for x in shots if not interesting(x)]
     for s in shown:
-        slip = f"{s.slip_hours:+.2f}h" if s.slip_hours is not None else ", "
+        slip = f"{s.slip_hours:+.2f}h" if s.slip_hours is not None else "–"
         print(f"  {s.shot} {s.department:9} {s.status:9} left={s.frames_remaining:>5} "
               f"rate={s.rate_per_min:>5.2f}/min slip={slip}")
     if rest:

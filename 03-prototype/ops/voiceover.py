@@ -108,9 +108,17 @@ def main() -> int:
         load_dotenv(ROOT / ".env")
         from second_unit import briefing
 
-    print(f"{'beat':>4}  {'name':24} {'source':9} {'words':>5} {'seconds':>8}")
+    print(f"{'beat':>4}  {'name':24} {'source':9} {'words':>5} {'seconds':>8} {'lead':>6}")
     rows, t = [], 0.0
-    for b in BEATS:
+    for i, b in enumerate(BEATS):
+        # A beat that navigates needs longer than the pad to be ready. Its actions were
+        # overrunning into its own narration, so the verification beat opened on a blank
+        # panel and the closing beat opened on a half-loaded hero: correct by the middle,
+        # wrong exactly when the voice introduced them. The lead is silence inserted BEFORE
+        # the beat, which buys the page time without moving anything relative to anything
+        # else. Declared per beat rather than inferred, because it is spent from the margin
+        # under the 3:00 ceiling and that budget should be visible.
+        lead = float(b.get("lead", 0.0)) if i else 0.0
         words = len(b["say"].split())
         if args.dry_run:
             secs = words / 2.6
@@ -120,13 +128,19 @@ def main() -> int:
                                         speaking_rate=SPEAKING_RATE)
             mp3.write_bytes(audio)
             secs = _ffprobe_seconds(mp3)
+        t += lead
         rows.append(dict(n=b["n"], name=b["name"], source=b["source"],
-                         start=round(t, 3), duration=round(secs, 3),
+                         start=round(t, 3), duration=round(secs, 3), lead=round(lead, 3),
                          caption=b["caption"], say=b["say"], actions=b["actions"]))
-        print(f"{b['n']:>4}  {b['name']:24} {b['source']:9} {words:>5} {secs:>8.2f}")
+        print(f"{b['n']:>4}  {b['name']:24} {b['source']:9} {words:>5} {secs:>8.2f} "
+              f"{lead:>6.1f}")
         t += secs + PAD_SECONDS
 
     total = t - PAD_SECONDS          # no trailing pad in the finished cut
+    spent = sum(r["lead"] for r in rows)
+    if spent:
+        print(f"\n  lead-in silence: {spent:.1f}s across "
+              f"{sum(1 for r in rows if r['lead'])} beat(s)")
     print(f"\n  total: {total:.1f}s   ceiling: {MAX_SECONDS:.0f}s")
 
     if total > MAX_SECONDS:
@@ -150,11 +164,17 @@ def main() -> int:
         # cannot disagree about where a beat starts. Relative names plus cwd=OUT, because
         # the concat demuxer resolves paths against its own file and absolute paths with
         # apostrophes in them are a quoting problem waiting to happen.
+        # Gaps vary now, so each one is its own file rather than one shared pad.
         entries = []
         for i, r in enumerate(rows):
+            if i:
+                gap = PAD_SECONDS + r["lead"]
+                gname = f"_gap-{i:02d}.mp3"
+                subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi",
+                                "-i", "anullsrc=r=24000:cl=mono", "-t", f"{gap:.3f}",
+                                str(OUT / gname)], check=True)
+                entries.append(f"file '{gname}'")
             entries.append(f"file 'beat-{r['n']:02d}.mp3'")
-            if i != len(rows) - 1:
-                entries.append(f"file '{silence.name}'")
         listing = OUT / "_concat.txt"
         listing.write_text("\n".join(entries) + "\n")
 

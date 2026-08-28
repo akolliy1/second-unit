@@ -31,7 +31,12 @@ ARGS=(
   --region "${REGION}"
   --tasks 1
   --max-retries 3
-  --task-timeout 86400          # 24h; Scheduler restarts it after that
+  # MUST stay below the Scheduler interval, which is every 12h. At 24h each execution
+  # outlived the next trigger by 12h, so two seeders wrote the same series continuously:
+  # not an occasional overlap, a permanent one guaranteed by the arithmetic. Two writers
+  # advancing one counter is what produced every "980 fr/min" and every demo-readiness
+  # failure blamed on a counter reset. 11h50m leaves a gap before the next start.
+  --task-timeout 42600
   --cpu 1 --memory 512Mi
   --set-env-vars "PROM_REMOTE_WRITE_URL=${PROM_REMOTE_WRITE_URL},PROM_USER=${PROM_USER},LOKI_PUSH_URL=${LOKI_PUSH_URL},LOKI_USER=${LOKI_USER}"
   --set-secrets "GRAFANA_CLOUD_TOKEN=grafana-cloud-token:latest"

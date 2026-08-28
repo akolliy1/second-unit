@@ -166,9 +166,16 @@ def compose(forecast, diagnosis, plan=None, *, shot: Optional[str] = None) -> st
 
 def synthesize(script: str, *, voice: str = None, speaking_rate: float = 1.0) -> bytes:
     """Return MP3 bytes. Raises on failure: the caller decides how to degrade."""
+    name = voice or VOICE
+    # The language code has to agree with the voice, and the voice name already states it:
+    # "en-US-Studio-O" against a hardcoded en-GB is rejected outright. Deriving it from the
+    # first two segments means passing any voice just works, instead of working only for the
+    # locale that happened to be the default.
+    parts = name.split("-")
+    language = "-".join(parts[:2]) if len(parts) >= 2 else LANGUAGE
     body = {
         "input": {"text": script},
-        "voice": {"languageCode": LANGUAGE, "name": voice or VOICE},
+        "voice": {"languageCode": language, "name": name},
         # Slightly slower than default: this is a number-dense briefing and a producer is
         # half-listening. MP3 so a browser <audio> element can stream it with no plugin.
         "audioConfig": {"audioEncoding": "MP3", "speakingRate": speaking_rate,
