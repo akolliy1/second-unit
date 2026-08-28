@@ -37,7 +37,7 @@
     {
       "id": 1,
       "type": "stat",
-      "title": "Frames remaining",
+      "title": "Frames remaining, farm-wide",
       "description": "Frames still to render for each shot in flight.",
       "datasource": {
         "type": "prometheus",
@@ -94,7 +94,7 @@
             "type": "prometheus",
             "uid": "grafanacloud-prom"
           },
-          "expr": "sum by (shot) (shot_frames_remaining{farm=\"vancouver\"})",
+          "expr": "sum(shot_frames_remaining{farm=\"vancouver\"})",
           "legendFormat": "{{shot}}",
           "editorMode": "code",
           "range": true,
@@ -105,7 +105,7 @@
     {
       "id": 2,
       "type": "stat",
-      "title": "Completion rate",
+      "title": "Completion rate, farm-wide",
       "description": "Frames/min currently being delivered per shot.",
       "datasource": {
         "type": "prometheus",
@@ -162,7 +162,7 @@
             "type": "prometheus",
             "uid": "grafanacloud-prom"
           },
-          "expr": "sum by (shot) (rate(render_frames_completed_total{farm=\"vancouver\"}[15m])) * 60",
+          "expr": "sum(rate(render_frames_completed_total{farm=\"vancouver\"}[15m])) * 60",
           "legendFormat": "{{shot}}",
           "editorMode": "code",
           "range": true,
@@ -173,7 +173,7 @@
     {
       "id": 3,
       "type": "stat",
-      "title": "Projected ETA",
+      "title": "Projected ETA, worst shot",
       "description": "Frames remaining divided by the current completion rate. This is the number that either clears the client review or misses it.",
       "datasource": {
         "type": "prometheus",
@@ -238,7 +238,7 @@
             "type": "prometheus",
             "uid": "grafanacloud-prom"
           },
-          "expr": "sum by (shot) (shot_frames_remaining{farm=\"vancouver\"}) / sum by (shot) (rate(render_frames_completed_total{farm=\"vancouver\"}[15m]))",
+          "expr": "max(sum by (shot) (shot_frames_remaining{farm=\"vancouver\"}) / sum by (shot) (rate(render_frames_completed_total{farm=\"vancouver\"}[15m])))",
           "legendFormat": "{{shot}}",
           "editorMode": "code",
           "range": true,
@@ -249,7 +249,7 @@
     {
       "id": 4,
       "type": "timeseries",
-      "title": "Frames remaining per shot",
+      "title": "Frames remaining per shot, top 8",
       "description": "Burndown per shot. A line that flattens has stopped making progress.",
       "datasource": {
         "type": "prometheus",
@@ -335,7 +335,7 @@
             "type": "prometheus",
             "uid": "grafanacloud-prom"
           },
-          "expr": "sum by (shot) (shot_frames_remaining{farm=\"vancouver\"})",
+          "expr": "topk(8, sum by (shot) (shot_frames_remaining{farm=\"vancouver\"}))",
           "legendFormat": "{{shot}}",
           "editorMode": "code",
           "range": true,
@@ -346,7 +346,7 @@
     {
       "id": 5,
       "type": "timeseries",
-      "title": "Completion rate per shot",
+      "title": "Completion rate per shot, top 8",
       "description": "Frames/min per shot. Compare against the healthy baseline to size a slip.",
       "datasource": {
         "type": "prometheus",
@@ -432,7 +432,7 @@
             "type": "prometheus",
             "uid": "grafanacloud-prom"
           },
-          "expr": "sum by (shot) (rate(render_frames_completed_total{farm=\"vancouver\"}[15m])) * 60",
+          "expr": "topk(8, sum by (shot) (rate(render_frames_completed_total{farm=\"vancouver\"}[15m])) * 60)",
           "legendFormat": "{{shot}}",
           "editorMode": "code",
           "range": true,
@@ -443,7 +443,7 @@
     {
       "id": 6,
       "type": "timeseries",
-      "title": "Projected ETA per shot",
+      "title": "Projected ETA per shot, top 8",
       "description": "ETA over time. When this curve bends upward the delivery date is moving away from you.",
       "datasource": {
         "type": "prometheus",
@@ -537,7 +537,7 @@
             "type": "prometheus",
             "uid": "grafanacloud-prom"
           },
-          "expr": "sum by (shot) (shot_frames_remaining{farm=\"vancouver\"}) / sum by (shot) (rate(render_frames_completed_total{farm=\"vancouver\"}[15m]))",
+          "expr": "topk(8, sum by (shot) (shot_frames_remaining{farm=\"vancouver\"}) / sum by (shot) (rate(render_frames_completed_total{farm=\"vancouver\"}[15m])))",
           "legendFormat": "{{shot}}",
           "editorMode": "code",
           "range": true,
@@ -645,7 +645,7 @@
     {
       "id": 8,
       "type": "timeseries",
-      "title": "Failed frames per shot",
+      "title": "Failed frames per shot, top 8",
       "description": "Failed frames/min per shot. Every failure here is work the shot has to redo.",
       "datasource": {
         "type": "prometheus",
@@ -731,7 +731,7 @@
             "type": "prometheus",
             "uid": "grafanacloud-prom"
           },
-          "expr": "sum by (shot) (rate(render_frames_failed_total{farm=\"vancouver\"}[15m])) * 60",
+          "expr": "topk(8, sum by (shot) (rate(render_frames_failed_total{farm=\"vancouver\"}[15m])) * 60)",
           "legendFormat": "{{shot}}",
           "editorMode": "code",
           "range": true,
