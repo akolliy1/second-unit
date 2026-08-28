@@ -11,3 +11,7 @@ python-dotenv>=1.0.0
 
 # fallback track only, uncomment if you pivot:
 # mcp-clickhouse>=0.1.0
+
+# Used by ops/record_demo.py and the browser checks, which drive Chrome over CDP. Not needed
+# to run the product, but the scripts are in the repo and an ImportError is a poor welcome.
+websocket-client>=1.7

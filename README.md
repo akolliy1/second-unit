@@ -190,7 +190,9 @@ commitment rather than being handed it.
 ```bash
 cd 03-prototype
 cp .env.example .env          # fill in: GCP project, Grafana stack URL + service account token
-python -m venv .venv && ./.venv/bin/pip install -r spike/requirements.txt
+python -m venv .venv
+# both files: spike/ has the agent stack, deploy/ has the console's web deps
+./.venv/bin/pip install -r spike/requirements.txt -r deploy/requirements.txt
 
 gcloud auth application-default login
 gcloud auth application-default set-quota-project <your-project>
@@ -207,7 +209,7 @@ cd agent && ../.venv/bin/python -m second_unit.run            # stops at the pro
 cd agent && ../.venv/bin/python -m second_unit.run --execute  # performs approved writes
 
 # the console
-cd web && ../spike/.venv/bin/python -m uvicorn app:app --port 8080
+cd web && ../.venv/bin/python -m uvicorn app:app --port 8080
 ```
 
 `spike/` is the de-risk ladder that proved the stack end to end, and
