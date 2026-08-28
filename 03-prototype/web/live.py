@@ -250,7 +250,26 @@ async def iter_live_events(shot: str = "SH042") -> AsyncIterator[dict]:
                     f"({_run.deadline_fallback_reason}); this forecast uses a placeholder.")
             yield ev
         if stage_id == "remediation_planner":
-            yield writeback_event(outputs["remediation_planner"])
+            plan = outputs["remediation_planner"]
+            # Patch the verdict with the plan the agent ACTUALLY produced.
+            #
+            # The banner is emitted after the forecaster, before the planner has run, so its
+            # "recommended action" and "trade-off" were constants: a live run showed
+            # "Drain the node, then confirm throughput recovers" and an empty trade-off, while
+            # the recorded run showed the model's real recommendation. Presenting a fixed
+            # string in the slot labelled "recommended action" is the kind of quiet
+            # substitution this project exists to catch, so once the real plan exists it
+            # replaces the placeholder. Personas differ in framing, not in the fix, so all
+            # three take the same recommendation.
+            yield {
+                "type": "verdict_patch",
+                "personas": {
+                    pid: {"action": plan.fix_recommendation,
+                          "risk": plan.risk_if_ignored}
+                    for pid in ("td", "supervisor", "producer")
+                },
+            }
+            yield writeback_event(plan)
             # The dailies briefing. Composed HERE, where the typed stage outputs still
             # exist, rather than in the audio endpoint, synthesis then needs only a
             # string, and the script is deterministic from data we have already verified.

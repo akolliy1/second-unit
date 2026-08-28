@@ -966,6 +966,7 @@ async function approve() {
         " · " + esc(i.effect) + "</span></li>").join("") + "</ul></div>";
     btn.textContent = "Approved ✓";
     zone("wbZone", "ready");
+    if (data.executing) pollWrites(box);
   } catch (err) {
     zone("wbZone", "error");
     $("wbErrMsg").textContent = String(err.message || err);
@@ -973,6 +974,60 @@ async function approve() {
     btn.textContent = "Approve and write";
   }
 }
+/* Watch the write-back actually happen.
+ *
+ * The writes are one agent call each, so this takes a minute or two and the approve request
+ * returns before any of it has landed. Polling shows the real outcome per item, including a
+ * disagreement, rather than leaving "queued" on screen as if that were the end of it.
+ *
+ * The three outcomes are the words the Agent page counts by, so the two surfaces cannot tell
+ * different stories about the same run:
+ *   confirmed      claimed, and an object of that kind really appeared
+ *   honest_failure the agent reported a failure and there is indeed nothing there
+ *   false_success  the agent reported success and the stack disagrees
+ */
+async function pollWrites(box) {
+  const started = Date.now();
+  const label = {confirmed: "\u2713 confirmed", honest_failure: "\u2717 honest failure",
+                 false_success: "\u203C claimed, not in the stack",
+                 unchecked: "\u2013 no independent check for this kind"};
+  while (Date.now() - started < 5 * 60 * 1000) {
+    await new Promise((r) => setTimeout(r, 2500));
+    let d;
+    try {
+      const r = await fetch("/api/run/" + STATE.runId + "/writes",
+                            {headers: {accept: "application/json"}});
+      d = await r.json();
+    } catch (_) { continue; }        /* a dropped poll is not a failed write */
+    if (d.state === "running") {
+      const el = box.querySelector(".d");
+      if (el) el.textContent = "Writing to Grafana, then verifying each write out of band. " +
+        Math.round((Date.now() - started) / 1000) + "s elapsed.";
+      continue;
+    }
+    if (d.state === "error") {
+      box.innerHTML = '<div class="approved" style="border-color:var(--crit)">' +
+        '<div class="t">The write-back failed</div><div class="d">' + esc(d.error || "") +
+        '</div></div>';
+      return;
+    }
+    const bad = (d.disagreements || []).length;
+    box.innerHTML = '<div class="approved"' + (bad ? ' style="border-color:var(--crit)"' : '') +
+      '><div class="t">' + (bad
+        ? "\u203C " + bad + " write(s) reported as successful are not in the stack"
+        : "Write-back complete and verified") +
+      '</div><div class="d">Each write was checked through Grafana&#39;s HTTP API, not the ' +
+      'MCP tools the agent just used.</div><ul class="calls" style="margin-top:.5rem">' +
+      (d.results || []).map((r) =>
+        '<li><span class="n">' + esc(r.kind) + '</span><span class="a">' +
+        esc(label[r.outcome] || r.outcome) +
+        (r.detail ? " \u00B7 " + esc(String(r.detail).slice(0, 60)) : "") +
+        "</span></li>").join("") + "</ul></div>";
+    return;
+  }
+}
+
+
 $("btnApprove").addEventListener("click", approve);
 $("btnApproveRetry").addEventListener("click", () => { zone("wbZone", "ready"); approve(); });
 
@@ -1024,6 +1079,24 @@ function handle(ev) {
       document.documentElement.dataset.noVerdict = "0";
       renderVerdict(ev);
       break;
+
+    /* The banner is drawn before the planner has run, so its action and trade-off start as
+       placeholders. This replaces them with the recommendation the agent actually produced,
+       rather than leaving a constant sitting under the words "recommended action". Patch
+       rather than re-render: the numbers above are already correct, and redrawing the whole
+       block would flash it mid-read. */
+    case "verdict_patch": {
+      for (const pid of ["td", "supervisor", "producer"]) {
+        const frame = document.querySelector('.frame[data-persona="' + pid + '"]');
+        const pp = (ev.personas || {})[pid] || {};
+        if (!frame) continue;
+        for (const f of ["action", "risk"]) {
+          const node = frame.querySelector('[data-f="' + f + '"]');
+          if (node && pp[f]) node.textContent = pp[f];
+        }
+      }
+      break;
+    }
 
     case "briefing":
       setBriefing(ev);

@@ -110,6 +110,12 @@ class Run:
     approved_at: Optional[float] = None
     approved_items: List[str] = field(default_factory=list)
     writeback_ids: List[str] = field(default_factory=list)
+    writeback_items: List[Dict] = field(default_factory=list)   # the full proposal
+    # Execution state. "idle" -> "running" -> "done" | "error". The UI polls this rather
+    # than holding a request open for the two minutes the writes can take.
+    write_state: str = "idle"
+    write_error: str = ""
+    write_results: List[Dict] = field(default_factory=list)     # verified, out of band
     live: bool = False          # run the real pipeline instead of replaying the recording
     shot: str = "SH042"         # which pass this run is about
     briefing_script: str = ""   # the spoken dailies script, composed by the pipeline
@@ -220,6 +226,7 @@ async def _iter_live(run: Run, request: Request) -> AsyncIterator[str]:
             # proposed, not against the fixture's items.
             if event.get("type") == "writeback_proposed":
                 run.writeback_ids = [i["id"] for i in event.get("items", [])]
+                run.writeback_items = list(event.get("items", []))
             if event.get("type") == "briefing" and event.get("script"):
                 run.briefing_script = event["script"]
             if event.get("type") == "run_done":
@@ -299,6 +306,7 @@ async def _iter_events(run: Run, request: Request) -> AsyncIterator[str]:
 
         if event["type"] == "writeback_proposed":
             run.writeback_ids = [i["id"] for i in event.get("items", [])]
+            run.writeback_items = list(event.get("items", []))
         if event["type"] == "briefing" and event.get("script"):
             run.briefing_script = event["script"]
         if event["type"] == "run_done":
@@ -530,14 +538,133 @@ async def stream_run(run_id: str, request: Request) -> StreamingResponse:
     )
 
 
+#: Which MCP tool performs each kind of write. The planner names a tool, but the recording
+#: stores only the kind, so this fills the gap and keeps one execution path for both.
+_TOOL_FOR = {
+    "annotation": "create_annotation",
+    "dashboard": "update_dashboard",
+    "alert": "alerting_manage_rules",
+    "alert_rule": "alerting_manage_rules",
+}
+
+
+def _plan_from_items(items: List[Dict]):
+    """Rebuild the planner's proposal from the write-back event.
+
+    Deliberately the same path for a live run and for the recording. A judge approving the
+    recorded run is the common case, and giving them a stub while the CLI does the real thing
+    would make the product's central claim untestable in the only place they can reach it.
+
+    The executor touches nothing but `proposed_writes`, so a namespace is enough; building a
+    full RemediationPlan would mean inventing the forecast fields it does not read.
+    """
+    from types import SimpleNamespace
+    from second_unit.schemas import ProposedWrite
+
+    writes = []
+    for it in items:
+        kind = (it.get("kind") or it.get("id") or "").strip()
+        writes.append(ProposedWrite(
+            action=kind,
+            title=it.get("title") or kind,
+            rationale=it.get("target") or "Approved by the operator in the console.",
+            tool=_TOOL_FOR.get(kind, "create_annotation"),
+            details=it.get("detail") or "",
+            reversible=True,
+        ))
+    return SimpleNamespace(proposed_writes=writes)
+
+
+async def _execute_writes(run: "Run", items: List[str]) -> None:
+    """Perform the approved writes, then check them out of band.
+
+    Runs detached from the request: the writes are one agent call each and take a minute or
+    two, and holding a POST open for that is how a judge on hotel wifi sees a timeout instead
+    of a result. State lands on the run and the UI polls it.
+
+    The verification is the point. `verify_writes` diffs the stack through Grafana's HTTP API,
+    not the MCP tools the executor just used, so a write the agent claims but never made shows
+    up as a disagreement rather than as success.
+    """
+    from second_unit import verify as verify_mod
+    from second_unit.pipeline import Approval, execute_approved_writes
+
+    try:
+        plan = _plan_from_items(run.writeback_items)
+        indices = [i for i, it in enumerate(run.writeback_items)
+                   if (it.get("id") or "") in items]
+        approval = Approval(
+            approved_by=f"console-operator ({run.id[:8]})",
+            approved=indices,
+            note="approved in the web console",
+        )
+        before = verify_mod.snapshot()
+        # Returns a StageResult, not a list: `.output` is the WriteResult list. Iterating the
+        # StageResult raised TypeError on the first real execution, which the error path
+        # surfaced rather than swallowing, so it showed up as a message instead of an empty
+        # success.
+        stage = await execute_approved_writes(plan, approval, verbose=False)
+        results = stage.output or []
+        if stage.error and not results:
+            raise RuntimeError(stage.error)
+        claimed = [r.model_dump() if hasattr(r, "model_dump") else dict(r) for r in results]
+        run.write_results = verify_mod.verify_writes(claimed, before)
+        run.write_state = "done"
+    except Exception as exc:  # noqa: BLE001
+        # Reported, never swallowed. A failed write that looks like nothing happened is the
+        # exact failure this project exists to make visible.
+        run.write_state = "error"
+        run.write_error = f"{type(exc).__name__}: {exc}"
+
+
+@app.get("/api/run/{run_id}/writes")
+async def write_status(run_id: str) -> JSONResponse:
+    """Poll the write-back. Returns the out-of-band verification once it exists."""
+    run = _get_run(run_id)
+    rows = []
+    for r in run.write_results:
+        # verify_writes emits action / claimed_success / verified / evidence. Reading
+        # `claimed` and `kind` instead, as the first draft did, reported every write as an
+        # honest failure: a plausible-looking table that was wrong about all of it.
+        claimed = bool(r.get("claimed_success"))
+        verified = r.get("verified")            # None means no check exists for this kind
+        if verified is None:
+            outcome = "unchecked"
+        elif claimed and not verified:
+            outcome = "false_success"
+        elif verified:
+            outcome = "confirmed"
+        else:
+            outcome = "honest_failure"
+        rows.append({
+            "kind": r.get("action") or "",
+            "claimed": claimed,
+            "verified": bool(verified),
+            "detail": r.get("evidence") or r.get("detail") or "",
+            # The same four words the Agent page counts by, so the two surfaces cannot tell
+            # different stories about one run.
+            "outcome": outcome,
+        })
+    return JSONResponse({
+        "run_id": run.id, "state": run.write_state, "error": run.write_error,
+        "results": rows,
+        "disagreements": [x for x in rows if x["outcome"] == "false_success"],
+    })
+
+
 @app.post("/api/run/{run_id}/approve")
 async def approve(run_id: str, request: Request) -> JSONResponse:
     """The governance beat: nothing is written until a human flips this.
 
-    The write itself is stubbed, this records the approval and echoes back what *would*
-    be written, with the Grafana scope each item needs. The real effect belongs behind the
-    service-account token, and that token's permissions are the actual security boundary
-    (§2 of the scope doc), so faking a write here would be theatre.
+    This used to record the approval and echo what it *would* write, on the reasoning that
+    faking a write would be theatre. That was right while the executor was a sketch. The
+    executor is real now, and leaving this stubbed meant the product's central claim, that it
+    writes back only after a human approves, could not be tested in the hosted console, which
+    is the only place most people can reach. The stub had become the theatre.
+
+    The writes are performed detached, because each is an agent call and the set takes a
+    minute or two; a POST held open that long fails as a timeout rather than a result. The UI
+    polls GET /api/run/{id}/writes, which reports the out-of-band verification.
     """
     run = _get_run(run_id)
 
@@ -580,11 +707,29 @@ async def approve(run_id: str, request: Request) -> JSONResponse:
     run.approved = True
     run.approved_at = time.time()
     run.approved_items = items
+
+    if not run.writeback_items:
+        # Nothing to execute against. Say so plainly rather than reporting a queued write
+        # that no code will ever pick up.
+        run.write_state = "error"
+        run.write_error = "no write-back proposal on this run"
+        return JSONResponse({
+            "run_id": run.id, "approved": True, "already_approved": False,
+            "approved_at": run.approved_at, "items": _echo(items), "executing": False,
+            "message": "Approved, but this run carries no write-back proposal, so there is "
+                       "nothing to execute.",
+        })
+
+    run.write_state = "running"
+    run.write_error = ""
+    run.write_results = []
+    asyncio.create_task(_execute_writes(run, items))
     return JSONResponse({
         "run_id": run.id, "approved": True, "already_approved": False,
-        "approved_at": run.approved_at, "items": _echo(items),
-        "message": f"{len(items)} write-back{'s' if len(items) != 1 else ''} approved and "
-                   f"queued. Grafana writes are stubbed in this build.",
+        "approved_at": run.approved_at, "items": _echo(items), "executing": True,
+        "message": f"{len(items)} write-back{'s' if len(items) != 1 else ''} approved. "
+                   f"Writing to Grafana now, then verifying each one out of band through "
+                   f"Grafana's HTTP API rather than the tools the agent just used.",
     })
 
 
@@ -596,10 +741,10 @@ SCOPES = {
 
 
 def _echo(items: List[str]) -> List[Dict[str, str]]:
-    """What the server says it would do, per item. The UI renders this verbatim."""
+    """What the server is about to do, per item, with the scope each one needs."""
     return [
         {"id": i, "status": "queued", "scope": SCOPES.get(i, "unknown"),
-         "effect": "stubbed in this build"}
+         "effect": "queued for execution"}
         for i in items
     ]
 
